@@ -1,10 +1,8 @@
 package com.bayra.customer
 
-import android.content.Context // 🛡️ THE MISSING WELD
+import android.content.Context
 import android.os.Bundle
 import android.preference.PreferenceManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -33,14 +31,12 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import java.net.URL
 import kotlin.concurrent.thread
-import kotlinx.coroutines.delay
 import java.util.*
 
-// --- THE GAMO LAWS (FUEL PHYSICS: 275 ETB/L) ---
 enum class ServiceTier(val label: String, val base: Int, val fuelKm: Double, val extra: Int, val isHr: Boolean) {
-    POOL("Pool", 50, 11.0, 30, false),      // 25km/L
-    COMFORT("Comfort", 50, 11.0, 0, false), // 25km/L
-    CODE_3("Code 3", 50, 27.5, 60, false),  // 10km/L
+    POOL("Pool", 50, 11.0, 30, false),
+    COMFORT("Comfort", 50, 11.0, 0, false),
+    CODE_3("Code 3", 50, 27.5, 60, false),
     BAJAJ_HR("Bajaj Hr", 350, 0.0, 0, true),
     C3_HR("C3 Hr", 550, 0.0, 0, true)
 }
@@ -50,41 +46,29 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = "BayraSovereign"
-        setContent { MaterialTheme { BookingEngine() } }
+        setContent { MaterialTheme { SovereignMapHub() } }
     }
 }
 
 @Composable
-fun BookingEngine() {
+fun SovereignMapHub() {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("bayra_vFinal", Context.MODE_PRIVATE)
-    var name by remember { mutableStateOf(prefs.getString("n", "") ?: "") }
-    var isAuth by remember { mutableStateOf(name.isNotEmpty()) }
-
-    if (!isAuth) {
-        Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-            Text("BAYRA LOGIN", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF5E4E92))
-            Spacer(Modifier.height(30.dp))
-            OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("ENTER") }
-        }
-    } else {
-        SovereignMapHub(name)
-    }
-}
-
-@Composable
-fun SovereignMapHub(pName: String) {
-    var step by remember { mutableStateOf("PICKUP") }
+    var name by remember { mutableStateOf(prefs.getString("n", "User") ?: "User") }
+    
+    // NAVIGATION STATE
+    var step by remember { mutableStateOf("PICKUP") } // PICKUP -> (DEST) -> CONFIRM
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var roadDistance by remember { mutableStateOf(0.0) }
     var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
+    
+    // SERVICE STATE
     var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
     var hrCount by remember { mutableStateOf(1) }
     var mapView: MapView? by remember { mutableStateOf(null) }
 
-    // --- REACTIVE PRICE CALCULATION ---
+    // PRICE CALCULATION
     val isNight = Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it >= 20 || it < 6 }
     val currentPrice = remember(selectedTier, roadDistance, hrCount, isNight) {
         if (selectedTier.isHr) {
@@ -101,29 +85,38 @@ fun SovereignMapHub(pName: String) {
             factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); setMultiTouchControls(true); controller.setZoom(16.0); controller.setCenter(GeoPoint(6.0238, 37.5532)); mapView = this } },
             update = { view ->
                 view.overlays.clear()
-                pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
+                pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.presence_offline) }.also { view.overlays.add(it) } }
                 destPt?.let { pt -> 
-                    Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) }
+                    Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) }
                     if (routePoints.isNotEmpty()) Polyline().apply { setPoints(routePoints); color = android.graphics.Color.BLACK; width = 10f }.also { view.overlays.add(it) }
                 }
                 view.invalidate()
             }
         )
 
+        // 📍 DYNAMIC CENTER PIN
         if (step != "CONFIRM") {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(if(step == "PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if(step == "PICKUP") "PICKUP" else "DESTINATION", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Black)
+                    // Visual Black Pin
+                    Box(Modifier.size(12.dp).background(Color.Black, androidx.compose.foundation.shape.CircleShape))
+                    Box(Modifier.width(2.dp).height(12.dp).background(Color.Black))
+                }
             }
         }
 
+        // 🎛️ CONTROL HUB
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
+            // TIER SELECTOR
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(ServiceTier.values()) { tier ->
                     val sel = selectedTier == tier
                     Surface(
                         Modifier.clickable { 
                             selectedTier = tier 
-                            if(tier.isHr) step = "CONFIRM" else if(step == "CONFIRM" && roadDistance == 0.0) step = "PICKUP"
+                            // Reset state if tier changes
+                            step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0
                         }, 
                         color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), 
                         shape = RoundedCornerShape(12.dp)
@@ -135,9 +128,24 @@ fun SovereignMapHub(pName: String) {
 
             Spacer(Modifier.height(16.dp))
 
+            // FLOW LOGIC
             if (step == "PICKUP") {
-                Button(onClick = { pickupPt = mapView?.mapCenter as GeoPoint; step = "DEST" }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("SET PICKUP") }
-            } else if (step == "DEST") {
+                // STEP 1: BOTH SERVICES NEED PICKUP
+                Button(
+                    onClick = { 
+                        pickupPt = mapView?.mapCenter as GeoPoint
+                        if (selectedTier.isHr) {
+                            step = "CONFIRM" // Hourly goes straight to Confirm
+                        } else {
+                            step = "DEST" // Standard goes to Destination
+                        }
+                    }, 
+                    Modifier.fillMaxWidth().height(60.dp), 
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                ) { Text("SET PICKUP FOR ${selectedTier.label.uppercase()}") }
+            } 
+            else if (step == "DEST") {
+                // STEP 2: ONLY FOR STANDARD RIDES
                 Button(onClick = { 
                     val end = mapView?.mapCenter as GeoPoint; destPt = end
                     thread {
@@ -154,10 +162,12 @@ fun SovereignMapHub(pName: String) {
                         } catch (e: Exception) { }
                     }
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("SET DESTINATION") }
-            } else {
+            } 
+            else {
+                // FINAL BOOKING PANEL
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column {
-                        Text(if(selectedTier.isHr) "UNLIMITED KM" else "${"%.2f".format(roadDistance)} KM", color = Color.Gray, fontSize = 12.sp)
+                        Text(if(selectedTier.isHr) "12KM/HR LIMIT" else "${"%.2f".format(roadDistance)} KM", color = Color.Gray, fontSize = 12.sp)
                         Text("$currentPrice ETB", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.Red)
                     }
                     if (selectedTier.isHr) {
@@ -172,9 +182,9 @@ fun SovereignMapHub(pName: String) {
                 Button(onClick = {
                     val ref = FirebaseDatabase.getInstance().getReference("rides")
                     val id = "R_${System.currentTimeMillis()}"
-                    ref.child(id).setValue(mapOf("id" to id, "pName" to pName, "status" to "REQUESTED", "price" to currentPrice.toString(), "tier" to selectedTier.label, "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude))
+                    ref.child(id).setValue(mapOf("id" to id, "pName" to pName, "status" to "REQUESTED", "price" to currentPrice.toString(), "tier" to selectedTier.label, "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "hours" to hrCount))
                 }, Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK ${selectedTier.label.uppercase()}") }
-                TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0 }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
+                TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0 }, Modifier.fillMaxWidth()) { Text("RESET") }
             }
         }
     }
