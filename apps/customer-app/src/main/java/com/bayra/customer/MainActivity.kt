@@ -37,7 +37,13 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 class MainActivity : ComponentActivity() {
     private var locationOverlay: MyLocationNewOverlay? = null
-    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> if (it) locationOverlay?.enableMyLocation() }
+    
+    // 🛡️ THE FIX: Corrected 'isGranted' usage
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted -> 
+        if (isGranted) locationOverlay?.enableMyLocation() 
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,11 +52,16 @@ class MainActivity : ComponentActivity() {
         setContent { MaterialTheme { PassengerApp() } }
         requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
+
+    fun centerMap(map: MapView?) {
+        locationOverlay?.enableFollowLocation()
+        locationOverlay?.myLocation?.let { map?.controller?.animateTo(it) }
+    }
 }
 
 @Composable
 fun PassengerApp() {
-    val context = LocalContext.current
+    val context = LocalContext.current as MainActivity
     val prefs = context.getSharedPreferences("bayra_vFINAL", 0)
     var name by remember { mutableStateOf(prefs.getString("n", "") ?: "") }
     var phone by remember { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -68,13 +79,12 @@ fun PassengerApp() {
                 isAuth = true 
             } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("ENTER") }
         }
-    } else { BookingFlow(name, phone) }
+    } else { BookingFlow(name, phone, context) }
 }
 
 @Composable
-fun BookingFlow(pName: String, pPhone: String) {
+fun BookingFlow(pName: String, pPhone: String, activity: MainActivity) {
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-    var locationOverlayRef by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
     var isSearching by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
@@ -82,7 +92,7 @@ fun BookingFlow(pName: String, pPhone: String) {
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 MapView(ctx).apply {
-                    // 🔥 THE HYBRID WELD (lyrs=y includes labels, streets, and satellite)
+                    // 🛰️ GOOGLE HYBRID WELD (Satellite + Streets + Labels)
                     setTileSource(object : XYTileSource("Google-Hybrid", 0, 20, 256, ".jpg", 
                         arrayOf("https://mt0.google.com/vt/lyrs=y&", "https://mt1.google.com/vt/lyrs=y&", "https://mt2.google.com/vt/lyrs=y&", "https://mt3.google.com/vt/lyrs=y&")
                     ) {
@@ -94,26 +104,20 @@ fun BookingFlow(pName: String, pPhone: String) {
                     val overlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
                     overlay.enableMyLocation()
                     overlays.add(overlay)
-                    locationOverlayRef = overlay
                     mapViewRef = this
                 }
             }
         )
 
-        // --- 🎯 TACTICAL "FIND ME" BUTTON ---
         FloatingActionButton(
-            onClick = { 
-                locationOverlayRef?.enableFollowLocation()
-                locationOverlayRef?.myLocation?.let { mapViewRef?.controller?.animateTo(it) }
-            },
+            onClick = { activity.centerMap(mapViewRef) },
             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).padding(top = 40.dp),
             containerColor = Color.White,
             shape = CircleShape
         ) { Text("🎯", fontSize = 20.sp) }
 
-        // --- 📍 CENTER PIN (STAYS IN CROSSHAIRS) ---
         if (!isSearching) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Surface(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(4.dp)) {
                         Text("SET PICKUP", color = Color.White, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), fontSize = 10.sp)
@@ -123,13 +127,11 @@ fun BookingFlow(pName: String, pPhone: String) {
             }
         }
 
-        // --- 🎛️ COMMAND HUB ---
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
             if (isSearching) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF5E4E92))
-                    Spacer(Modifier.height(10.dp))
-                    Text("SIGNAL SENT. WAITING FOR DRIVER...", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(10.dp)); Text("SEARCHING FOR DRIVER...", fontWeight = FontWeight.Bold)
                     Button({ isSearching = false }, Modifier.padding(top = 20.dp).fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
                 }
             } else {
@@ -148,7 +150,7 @@ fun BookingFlow(pName: String, pPhone: String) {
                         },
                         modifier = Modifier.height(60.dp).width(150.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))
-                    ) { Text("BOOK NOW", fontWeight = FontWeight.Bold) }
+                    ) { Text("BOOK", fontWeight = FontWeight.Bold) }
                 }
             }
         }
