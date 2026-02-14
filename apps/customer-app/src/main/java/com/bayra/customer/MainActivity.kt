@@ -39,6 +39,7 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.URL
 import kotlin.concurrent.thread
 import kotlin.math.*
+import java.util.*
 
 enum class ServiceTier(val label: String, val base: Int, val kmRate: Double, val extra: Int, val isHr: Boolean) {
     POOL("Pool", 80, 11.0, 30, false),
@@ -75,7 +76,7 @@ fun PassengerApp() {
             Spacer(Modifier.height(30.dp))
             OutlinedTextField(name, { name = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(phone, { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(30.dp))
             Button({ if(name.length > 2 && phone.length > 8) { 
                 prefs.edit().putString("n", name).putString("p", phone).apply()
                 isAuth = true 
@@ -86,19 +87,20 @@ fun PassengerApp() {
 
 @Composable
 fun BookingFlow(pName: String, pPhone: String) {
-    var step by remember { mutableStateOf("PICKUP") } // PICKUP -> DEST -> CONFIRM
+    var step by remember { mutableStateOf("PICKUP") }
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
-    var roadDistance by remember { mutableStateOf(0.0) }
     var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
+    var roadDistance by remember { mutableStateOf(0.0) }
     var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
     var hrCount by remember { mutableStateOf(1) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var isSearching by remember { mutableStateOf(false) }
 
-    val totalFare = remember(selectedTier, roadDistance, hrCount) {
-        if (selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt()
-        else (selectedTier.base + (roadDistance * selectedTier.kmRate) + selectedTier.extra).toInt()
+    val isNight = Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it >= 20 || it < 6 }
+    val totalFare = remember(selectedTier, roadDistance, hrCount, isNight) {
+        if (selectedTier.isHr) ((selectedTier.base + (if(isNight) 100 else 0)) * hrCount * 1.15).toInt()
+        else ((selectedTier.base + (roadDistance * selectedTier.kmRate) + selectedTier.extra + (if(isNight) 200 else 0)) * 1.15).toInt()
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -119,20 +121,20 @@ fun BookingFlow(pName: String, pPhone: String) {
                 }
             },
             update = { view ->
+                // Clear old and redraw based on current state
                 view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
                 view.overlays.filterIsInstance<Polyline>().forEach { view.overlays.remove(it) }
+                
                 pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
-                if (!selectedTier.isHr) {
-                    destPt?.let { pt -> 
-                        Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) }
-                        if (routePoints.isNotEmpty()) Polyline().apply { setPoints(routePoints); color = android.graphics.Color.WHITE; width = 12f }.also { view.overlays.add(it) }
-                    }
+                
+                if (!selectedTier.isHr && destPt != null) {
+                    Marker(view).apply { position = destPt!!; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) }
+                    if (routePoints.isNotEmpty()) Polyline().apply { setPoints(routePoints); color = android.graphics.Color.WHITE; width = 12f }.also { view.overlays.add(it) }
                 }
                 view.invalidate()
             }
         )
 
-        // --- 📍 CENTER PIN (BLACK WATER DROP) ---
         if (step != "CONFIRM" && !isSearching) {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -150,7 +152,6 @@ fun BookingFlow(pName: String, pPhone: String) {
             }
         }
 
-        // --- 🎛️ CONTROL HUB ---
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
             if (isSearching) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -162,12 +163,28 @@ fun BookingFlow(pName: String, pPhone: String) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(ServiceTier.values()) { tier ->
                         val sel = selectedTier == tier
-                        Surface(Modifier.clickable { selectedTier = tier; if(tier.isHr) step = "CONFIRM" else step = "PICKUP" }, color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
-                            Text(tier.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold)
+                        Surface(
+                            Modifier.clickable { 
+                                // 🛡️ THE FIX: Keep points, just update logic
+                                selectedTier = tier
+                                if (tier.isHr) {
+                                    if (pickupPt != null) step = "CONFIRM"
+                                } else {
+                                    if (pickupPt != null && destPt != null) step = "CONFIRM"
+                                    else if (pickupPt != null) step = "DEST"
+                                    else step = "PICKUP"
+                                }
+                            }, 
+                            color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), 
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(tier.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold, color = if(sel) Color.White else Color.Black)
                         }
                     }
                 }
+                
                 Spacer(Modifier.height(16.dp))
+                
                 if (step == "PICKUP") {
                     Button({ pickupPt = mapViewRef?.mapCenter as GeoPoint; step = if (selectedTier.isHr) "CONFIRM" else "DEST" }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("SET PICKUP") }
                 } else if (step == "DEST") {
@@ -196,7 +213,7 @@ fun BookingFlow(pName: String, pPhone: String) {
                     Button({
                         val ref = FirebaseDatabase.getInstance().getReference("rides")
                         val id = "R_${System.currentTimeMillis()}"
-                        ref.child(id).setValue(mapOf("id" to id, "pName" to pName, "pPhone" to pPhone, "status" to "REQUESTED", "price" to totalFare.toString(), "tier" to selectedTier.label, "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "hr" to hrCount))
+                        ref.child(id).setValue(mapOf("id" to id, "pName" to pName, "pPhone" to pPhone, "status" to "REQUESTED", "price" to totalFare.toString(), "tier" to selectedTier.label, "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude))
                         isSearching = true
                     }, Modifier.fillMaxWidth().padding(top = 16.dp).height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK ${selectedTier.label.uppercase()}") }
                     TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0 }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
