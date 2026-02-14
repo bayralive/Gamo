@@ -13,8 +13,7 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "Bayra"
+rootProject.name = "Gamo"
+
 include(":apps:customer-app")
 include(":apps:driver-app")
-include(":packages:shared-types")
-include(":packages:ui-components")
