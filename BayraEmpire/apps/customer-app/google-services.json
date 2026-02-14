@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "99409413861",
+    "firebase_url": "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "bayra-84ecf",
+    "storage_bucket": "bayra-84ecf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99409413861:android:fac62bdfd04057f447360c",
+        "android_client_info": {
+          "package_name": "com.bayra.customer"
+        }
+      },
+      "api_key": [ { "current_key": "AIzaSyBeHqTjBO6I3M1y-f9cFT_7S9KzmDwRsAs" } ]
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99409413861:android:cc30cd04ad5047ba47360c",
+        "android_client_info": {
+          "package_name": "com.bayra.driver"
+        }
+      },
+      "api_key": [ { "current_key": "AIzaSyBeHqTjBO6I3M1y-f9cFT_7S9KzmDwRsAs" } ]
+    }
+  ],
+  "configuration_version": "1"
+}
