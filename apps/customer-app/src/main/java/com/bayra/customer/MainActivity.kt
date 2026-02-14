@@ -1,5 +1,6 @@
 package com.bayra.customer
 
+import android.content.Context // 🛡️ THE MISSING WELD
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.webkit.WebView
@@ -65,7 +66,7 @@ fun BookingEngine() {
             Text("BAYRA LOGIN", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF5E4E92))
             Spacer(Modifier.height(30.dp))
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
+            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("ENTER") }
         }
     } else {
         SovereignMapHub(name)
@@ -109,14 +110,12 @@ fun SovereignMapHub(pName: String) {
             }
         )
 
-        // 📍 COMMAND PIN
         if (step != "CONFIRM") {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(if(step == "PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp))
             }
         }
 
-        // 🎛️ PRICING CONTROL HUB
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(ServiceTier.values()) { tier ->
@@ -156,7 +155,6 @@ fun SovereignMapHub(pName: String) {
                     }
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("SET DESTINATION") }
             } else {
-                // --- THE FINAL BILLING VIEW ---
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column {
                         Text(if(selectedTier.isHr) "UNLIMITED KM" else "${"%.2f".format(roadDistance)} KM", color = Color.Gray, fontSize = 12.sp)
