@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 34
-        versionCode = 101
-        versionName = "1.0.1-Sovereign"
+        versionCode = 105
+        versionName = "1.0.5-Native"
         multiDexEnabled = true
     }
     buildFeatures { compose = true }
@@ -25,7 +25,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.7.2")
-    // 🛡️ THE FIX: Correct Firebase group mapping
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-database-ktx")
 }

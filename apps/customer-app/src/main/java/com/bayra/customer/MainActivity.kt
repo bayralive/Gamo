@@ -1,11 +1,10 @@
 package com.bayra.customer
 
-import android.annotation.SuppressLint
 import android.os.Bundle
-import android.webkit.*
+import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Canvas // 🛡️ THE MISSING IMPORT
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,145 +16,102 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.FirebaseDatabase
-import java.util.*
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
+import kotlin.math.*
 
-enum class ServiceTier(val label: String, val base: Int, val ratePerKm: Double) {
-    POOL("Pool", 80, 11.0), 
-    COMFORT("Comfort", 100, 11.0), 
-    CODE_3("Code 3", 250, 27.5), 
-    BAJAJ_HR("Bajaj Hr", 350, 0.0), 
-    C3_HR("C3 Hr", 550, 0.0)
+enum class ServiceTier(val label: String, val base: Int, val rate: Double) {
+    POOL("Pool", 80, 15.0), COMFORT("Comfort", 120, 20.0), CODE_3("Code 3", 280, 35.0)
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { BayraRouter() } }
+        Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
+        Configuration.getInstance().userAgentValue = "BayraV1"
+        setContent { MaterialTheme { NativeRouterApp() } }
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun BayraRouter() {
-    var webView: WebView? = null
-    var step by remember { mutableStateOf("PICKUP") } // PICKUP -> DROPOFF -> CONFIRM
-    var pLat by remember { mutableStateOf(6.0333) }
-    var pLon by remember { mutableStateOf(37.5500) }
-    var dLat by remember { mutableStateOf(0.0) }
-    var dLon by remember { mutableStateOf(0.0) }
-    var routeDistance by remember { mutableStateOf(0.0) }
+fun NativeRouterApp() {
+    var step by remember { mutableStateOf("PICKUP") }
+    var mapCenter by remember { mutableStateOf(GeoPoint(6.0333, 37.5500)) }
+    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var dropoffPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
-    
-    // PRICE CALCULATION
-    val totalFare = remember(selectedTier, routeDistance) {
-        if (selectedTier.ratePerKm == 0.0) selectedTier.base // Flat rate for hourly
-        else (selectedTier.base + (routeDistance * selectedTier.ratePerKm) * 1.15).toInt()
-    }
+
+    val distanceKm = if (pickupPt != null && dropoffPt != null) {
+        val lat1 = pickupPt!!.latitude; val lon1 = pickupPt!!.longitude
+        val lat2 = dropoffPt!!.latitude; val lon2 = dropoffPt!!.longitude
+        val a = sin(Math.toRadians(lat2-lat1)/2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(Math.toRadians(lon2-lon1)/2).pow(2)
+        6371.0 * 2 * asin(sqrt(a))
+    } else 0.0
+
+    val totalFare = (selectedTier.base + (distanceKm * selectedTier.rate * 1.15)).toInt()
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                    addJavascriptInterface(object {
-                        @JavascriptInterface
-                        fun onMapMove(lat: Double, lng: Double, mode: String) {
-                            if (mode == "PICKUP") { pLat = lat; pLon = lng }
-                            else { dLat = lat; dLon = lng }
-                        }
-                        @JavascriptInterface
-                        fun onRouteCalculated(dist: Double) {
-                            routeDistance = dist
-                        }
-                    }, "Android")
-                    webViewClient = WebViewClient()
-                    loadUrl("file:///android_asset/map.html")
-                    webView = this
+            factory = { ctx -> MapView(ctx).apply { 
+                setTileSource(TileSourceFactory.MAPNIK)
+                setMultiTouchControls(true)
+                controller.setZoom(16.0)
+                controller.setCenter(mapCenter)
+            } },
+            update = { view ->
+                view.overlays.clear()
+                pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); title = "Pickup" }.also { view.overlays.add(it) } }
+                dropoffPt?.let { pt -> 
+                    Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); title = "Drop-off" }.also { view.overlays.add(it) }
+                    Polyline().apply { addPoint(pickupPt); addPoint(dropoffPt); color = android.graphics.Color.BLACK; width = 8f }.also { view.overlays.add(it) }
                 }
+                mapCenter = view.mapCenter as GeoPoint
+                view.invalidate()
             }
         )
 
-        // 📍 CENTER PIN (Visible only during selection)
         if (step != "CONFIRM") {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                // VISUAL BLACK DROP PIN (CSS Match)
-                Canvas(modifier = Modifier.size(30.dp).offset(y = (-15).dp)) {
-                    drawCircle(Color.Black)
-                }
-                Text("📍", fontSize = 10.sp, color = Color.Transparent) // Anchor
+                Text(if(step == "PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp))
             }
         }
 
-        // 🎛️ CONTROL PANEL
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
-            
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).padding(24.dp)) {
             if (step == "PICKUP") {
-                Text("SET PICKUP POINT", fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { 
-                        step = "DROPOFF"
-                        webView?.loadUrl("javascript:lockPickup($pLat, $pLon)") 
-                    }, 
-                    Modifier.fillMaxWidth().height(55.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                ) { Text("CONFIRM PICKUP") }
-            } 
-            else if (step == "DROPOFF") {
-                Text("SET DROP-OFF POINT", fontWeight = FontWeight.Bold, color = Color.Red)
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = { 
-                        step = "CONFIRM"
-                        webView?.loadUrl("javascript:calcRoute($pLat, $pLon, $dLat, $dLon)") 
-                    }, 
-                    Modifier.fillMaxWidth().height(55.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))
-                ) { Text("CALCULATE ROUTE") }
-            } 
-            else {
-                // FINAL BOOKING SCREEN
-                Text("DISTANCE: ${"%.1f".format(routeDistance)} KM", color = Color.Gray, fontSize = 12.sp)
-                Spacer(Modifier.height(10.dp))
-                
+                Text("LOCK PICKUP", fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+                Button(onClick = { pickupPt = mapCenter; step = "DROPOFF" }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("CONFIRM PICKUP") }
+            } else if (step == "DROPOFF") {
+                Text("LOCK DESTINATION", fontWeight = FontWeight.Bold, color = Color.Red)
+                Button(onClick = { dropoffPt = mapCenter; step = "CONFIRM" }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("CALCULATE FARE") }
+            } else {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(ServiceTier.values()) { tier ->
-                        val sel = selectedTier == tier
-                        Surface(Modifier.clickable { selectedTier = tier }, color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) {
+                        Surface(Modifier.clickable { selectedTier = tier }, color = if(selectedTier == tier) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) {
                             Text(tier.label, Modifier.padding(12.dp, 8.dp), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-                
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Text("TOTAL", fontWeight = FontWeight.Bold)
-                    Text("$totalFare ETB", fontSize = 28.sp, color = Color.Red, fontWeight = FontWeight.Black)
+                    Text("${"%.1f".format(distanceKm)} KM", color = Color.Gray)
+                    Text("$totalFare ETB", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Red)
                 }
-                
-                Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = {
-                        val ref = FirebaseDatabase.getInstance().getReference("rides")
-                        val id = "R_${System.currentTimeMillis()}"
-                        ref.child(id).setValue(mapOf("id" to id, "status" to "REQUESTED", "price" to totalFare.toString(), "tier" to selectedTier.label, "pLat" to pLat, "pLon" to pLon, "dLat" to dLat, "dLon" to dLon))
-                    }, 
-                    Modifier.fillMaxWidth().height(60.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))
-                ) { Text("BOOK NOW") }
-                
-                Spacer(Modifier.height(8.dp))
-                TextButton({ 
-                    step = "PICKUP"; routeDistance = 0.0 
-                    webView?.loadUrl("javascript:resetMap()")
-                }, Modifier.fillMaxWidth()) { Text("RESET MAP", color = Color.Gray) }
+                Button(onClick = {
+                    val id = "R_${System.currentTimeMillis()}"
+                    FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "status" to "REQUESTED", "price" to totalFare.toString(), "tier" to selectedTier.label, "pLat" to pickupPt!!.latitude, "pLon" to pickupPt!!.longitude, "dLat" to dropoffPt!!.latitude, "dLon" to dropoffPt!!.longitude))
+                }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK NOW") }
+                TextButton({ step = "PICKUP"; pickupPt = null; dropoffPt = null }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
             }
         }
     }
