@@ -46,7 +46,6 @@ import kotlin.concurrent.thread
 import kotlin.math.*
 import java.util.*
 
-// --- THE GAMO PRICING LAWS (RESTORED & PERSISTENT) ---
 enum class ServiceTier(val label: String, val base: Int, val kmRate: Double, val extra: Int, val isHr: Boolean) {
     POOL("Pool", 80, 11.0, 30, false),
     COMFORT("Comfort", 120, 11.0, 0, false),
@@ -73,10 +72,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("bayra_p_vFINAL", 0)
+    val prefs = context.getSharedPreferences("bayra_p_vFINAL", Context.MODE_PRIVATE)
     var name by remember { mutableStateOf(prefs.getString("n", "") ?: "") }
     var phone by remember { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(name.isNotEmpty()) }
+    var currentTab by remember { mutableStateOf("BOOK") }
 
     if (!isAuth) {
         Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
@@ -90,12 +90,32 @@ fun PassengerApp() {
                 isAuth = true 
             } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("ENTER") }
         }
-    } else { BookingHub(name, phone) }
+    } else {
+        Scaffold(
+            bottomBar = {
+                NavigationBar(containerColor = Color.White) {
+                    NavigationBarItem(selected = currentTab == "BOOK", onClick = { currentTab = "BOOK" }, icon = { Text("🚕") }, label = { Text("Book") })
+                    NavigationBarItem(selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, icon = { Text("👤") }, label = { Text("Account") })
+                }
+            }
+        ) { p ->
+            Box(Modifier.padding(p)) {
+                if (currentTab == "BOOK") BookingHub(name, phone)
+                else Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("ACCOUNT: $name", fontWeight = FontWeight.Bold); Text(phone, color = Color.Gray)
+                    Spacer(Modifier.height(40.dp))
+                    Button({ prefs.edit().clear().apply(); isAuth = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("LOGOUT") }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 fun BookingHub(pName: String, pPhone: String) {
-    var step by remember { mutableStateOf("PICKUP") } // PICKUP -> DEST -> CONFIRM
+    // 🛡️ THE FIX: LocalContext defined inside the Composable function
+    val context = LocalContext.current
+    var step by remember { mutableStateOf("PICKUP") }
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
@@ -104,7 +124,7 @@ fun BookingHub(pName: String, pPhone: String) {
     var hrCount by remember { mutableStateOf(1) }
     var paymentMethod by remember { mutableStateOf("CASH") }
     var isSearching by remember { mutableStateOf(false) }
-    var rideStatus by remember { mutableStateOf("REQUESTED") }
+    var rideStatus by remember { mutableStateOf("IDLE") }
     var driverName by remember { mutableStateOf<String?>(null) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
@@ -140,8 +160,7 @@ fun BookingHub(pName: String, pPhone: String) {
         )
 
         if (!isSearching && rideStatus != "COMPLETED") {
-            // TARGET CROSSHAIR
-            if (step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { 
+            if (step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(if(step == "PICKUP") "PICKUP" else "DEST", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                     Canvas(Modifier.size(35.dp)) {
@@ -150,18 +169,11 @@ fun BookingHub(pName: String, pPhone: String) {
                     }
                 }
             }
-
-            // --- SELECTION CONTROL PANEL ---
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(ServiceTier.values()) { tier ->
                         val sel = selectedTier == tier
-                        Surface(Modifier.clickable { 
-                            selectedTier = tier 
-                            // 🛡️ THE FIX: Points persist. Only step changes based on data.
-                            if (tier.isHr) { step = if(pickupPt != null) "CONFIRM" else "PICKUP" }
-                            else { step = if(pickupPt != null && destPt != null) "CONFIRM" else if(pickupPt != null) "DEST" else "PICKUP" }
-                        }, color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
+                        Surface(Modifier.clickable { selectedTier = tier; if(tier.isHr) step = "CONFIRM" else if(pickupPt != null && destPt != null) step = "CONFIRM" else if(pickupPt != null) step = "DEST" else step = "PICKUP" }, color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
                             Text(tier.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold)
                         }
                     }
@@ -180,16 +192,9 @@ fun BookingHub(pName: String, pPhone: String) {
                     } catch (e: Exception) {} }
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("SET DESTINATION") }
                 else {
-                    // --- THE FINAL BILLING & BOOKING ---
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Column { Text(if(selectedTier.isHr) "UNLIMITED" else "${"%.1f".format(roadDistance)} KM", color = Color.Gray); Text("$totalFare ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.Red) }
-                        Row { // CASH/CHAPA TOGGLE
-                            listOf("CASH", "CHAPA").forEach { m -> 
-                                Surface(Modifier.clickable { paymentMethod = m }.padding(4.dp), color = if(paymentMethod == m) Color(0xFF5E4E92) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) {
-                                    Text(m, Modifier.padding(8.dp), fontSize = 10.sp, color = if(paymentMethod == m) Color.White else Color.Black)
-                                }
-                            }
-                        }
+                        Row { listOf("CASH", "CHAPA").forEach { m -> Surface(Modifier.clickable { paymentMethod = m }.padding(4.dp), color = if(paymentMethod == m) Color(0xFF5E4E92) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) { Text(m, Modifier.padding(8.dp), fontSize = 10.sp, color = if(paymentMethod == m) Color.White else Color.Black) } } }
                     }
                     Spacer(Modifier.height(16.dp))
                     Button({
@@ -205,24 +210,23 @@ fun BookingHub(pName: String, pPhone: String) {
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
-                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK ${selectedTier.label.uppercase()}") }
+                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK NOW") }
                     TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0 }, Modifier.fillMaxWidth()) { Text("RESET MAP", color = Color.Gray) }
                 }
             }
         }
-
-        // --- 🚁 THE "PAY NOW" / SEARCHING OVERLAY ---
         if (isSearching || rideStatus == "COMPLETED") {
             Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                 if (rideStatus == "COMPLETED") {
                     Text("TRIP COMPLETED", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
                     Text("$totalFare ETB", fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(30.dp))
-                    Button(onClick = { 
-                        val url = "https://checkout.chapa.co/checkout/web/payment/CHAPUBK-GTviouToMOe9vOg5t1dNR9paQ1M62jOX"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                        rideStatus = "IDLE"; isSearching = false
-                    }, Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("PAY NOW", fontWeight = FontWeight.Bold) }
+                    Button({ 
+                        // 🔥 CONTEXT REPAIRED 🔥
+                        val chapaUrl = "https://checkout.chapa.co/checkout/web/payment/CHAPUBK-GTviouToMOe9vOg5t1dNR9paQ1M62jOX"
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(chapaUrl)))
+                        rideStatus = "IDLE"; isSearching = false 
+                    }, Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("PAY NOW") }
                     TextButton({ rideStatus = "IDLE"; isSearching = false }) { Text("PAID WITH CASH") }
                 } else {
                     CircularProgressIndicator(color = Color(0xFF5E4E92))
