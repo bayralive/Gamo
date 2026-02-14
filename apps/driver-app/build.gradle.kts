@@ -1,27 +1,16 @@
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
-}
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("com.google.gms.google-services") }
 android {
-    namespace = "com.bayra.driver"
-    compileSdk = 34
+    namespace = "com.bayra.driver"; compileSdk = 34
     defaultConfig {
-        applicationId = "com.bayra.driver"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 102
-        versionName = "1.0.2-Sovereign"
-        multiDexEnabled = true
+        applicationId = "com.bayra.driver"; minSdk = 24; targetSdk = 34
+        versionCode = 115; versionName = "1.1.5-Sovereign"; multiDexEnabled = true
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
     kotlinOptions { jvmTarget = "1.8" }
 }
 dependencies {
-    // 🛰️ THE MISSING LINK: Location Services for the Beacon
     implementation("com.google.android.gms:play-services-location:21.0.1")
-    
     implementation(platform("androidx.compose:compose-bom:2023.06.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")

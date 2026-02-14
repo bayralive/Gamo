@@ -1,18 +1,9 @@
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
-}
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("com.google.gms.google-services") }
 android {
-    namespace = "com.bayra.customer"
-    compileSdk = 34
+    namespace = "com.bayra.customer"; compileSdk = 34
     defaultConfig {
-        applicationId = "com.bayra.customer"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 105
-        versionName = "1.0.5-Native"
-        multiDexEnabled = true
+        applicationId = "com.bayra.customer"; minSdk = 24; targetSdk = 34
+        versionCode = 115; versionName = "1.1.5-Sovereign"; multiDexEnabled = true
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
