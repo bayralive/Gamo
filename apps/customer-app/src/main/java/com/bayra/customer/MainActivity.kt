@@ -1,5 +1,6 @@
 package com.bayra.customer
 
+import android.content.Context // 🛡️ FIXED: ADDED MISSING IMPORT
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.webkit.WebView
@@ -34,11 +35,13 @@ import java.net.URL
 import kotlin.concurrent.thread
 import kotlinx.coroutines.delay
 import java.util.*
+import kotlin.math.*
 
+// THE GAMO LAWS
 enum class ServiceTier(val label: String, val base: Int, val kmRate: Double, val extra: Int, val isHr: Boolean) {
-    POOL("Pool", 50, 11.0, 30, false),
-    COMFORT("Comfort", 50, 11.0, 0, false),
-    CODE_3("Code 3", 50, 27.5, 60, false),
+    POOL("Pool", 80, 15.0, 30, false),
+    COMFORT("Comfort", 120, 11.0, 0, false),
+    CODE_3("Code 3", 280, 27.5, 60, false),
     BAJAJ_HR("Bajaj Hr", 350, 0.0, 0, true),
     C3_HR("C3 Hr", 550, 0.0, 0, true)
 }
@@ -85,7 +88,7 @@ fun PassengerAuth() {
 
 @Composable
 fun BookingHub(pName: String, pPhone: String) {
-    var step by remember { mutableStateOf("PICKUP") } // PICKUP -> DEST -> CONFIRM
+    var step by remember { mutableStateOf("PICKUP") }
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
@@ -110,10 +113,12 @@ fun BookingHub(pName: String, pPhone: String) {
     }
 
     val isNight = Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it >= 20 || it < 6 }
+    
+    // 🛡️ FIXED MATH: Used kmRate instead of fuelCost
     val totalFare = if (selectedTier.isHr) {
         ((selectedTier.base + (if(isNight) 100 else 0)) * hrCount * 1.15).toInt()
     } else {
-        ((selectedTier.base + (roadDistance * selectedTier.fuelCost) + selectedTier.extra + (if(isNight) 200 else 0)) * 1.15).toInt()
+        ((selectedTier.base + (roadDistance * selectedTier.kmRate) + selectedTier.extra + (if(isNight) 200 else 0)) * 1.15).toInt()
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -131,14 +136,12 @@ fun BookingHub(pName: String, pPhone: String) {
             }
         )
 
-        // PIN OVERLAY
         if (step != "CONFIRM") {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(if(step == "PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp))
             }
         }
 
-        // CONTROL HUB
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(24.dp)) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(ServiceTier.values()) { tier ->
@@ -155,9 +158,9 @@ fun BookingHub(pName: String, pPhone: String) {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Text("Duration:")
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button({ if(hrCount > 1) hrCount-- }, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { Text("-") }
+                        Button({ if(hrCount > 1) hrCount-- }, modifier = Modifier.size(40.dp)) { Text("-") }
                         Text("$hrCount HR", Modifier.padding(horizontal = 15.dp), fontWeight = FontWeight.Bold)
-                        Button({ if(hrCount < 12) hrCount++ }, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { Text("+") }
+                        Button({ if(hrCount < 12) hrCount++ }, modifier = Modifier.size(40.dp)) { Text("+") }
                     }
                 }
             }
@@ -175,8 +178,8 @@ fun BookingHub(pName: String, pPhone: String) {
                 Button(onClick = {
                     val ref = FirebaseDatabase.getInstance().getReference("rides")
                     val id = "R_${System.currentTimeMillis()}"
-                    val lat = if(selectedTier.isHr) mapView?.mapCenter?.latitude else pickupPt?.latitude
-                    val lon = if(selectedTier.isHr) mapView?.mapCenter?.longitude else pickupPt?.longitude
+                    val lat = if(selectedTier.isHr) (mapView?.mapCenter as GeoPoint).latitude else pickupPt?.latitude
+                    val lon = if(selectedTier.isHr) (mapView?.mapCenter as GeoPoint).longitude else pickupPt?.longitude
                     ref.child(id).setValue(mapOf("id" to id, "pName" to pName, "pPhone" to pPhone, "price" to totalFare.toString(), "status" to "REQUESTED", "tier" to selectedTier.label, "pLat" to lat, "pLon" to lon))
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK NOW") }
                 TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf() }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
