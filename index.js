@@ -10,28 +10,33 @@ const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
 const CHAPA_SECRET_KEY = process.env.CHAPA_SECRET_KEY; 
 
 app.get('/', (req, res) => {
-  res.send('BAYRA TREASURY: ONLINE 🛰️');
+  res.send('BAYRA TREASURY: FULLY OPERATIONAL 🛰️');
 });
 
 app.post('/initialize-payment', async (req, res) => {
-  const { amount, name, phone } = req.body;
+  const { amount, name, phone, rideId } = req.body;
   
-  // Create a unique reference for this specific transaction
-  const tx_ref = `BAYRA-${Date.now()}`;
+  // Validation check
+  if (!phone || phone.length < 9) {
+    return res.status(400).json({ status: "failed", error: "Valid Phone Number Required" });
+  }
+
+  const tx_ref = `BAYRA-${rideId || Date.now()}`;
 
   try {
-    console.log(`Requesting Chapa Link for: ${name} | Amount: ${amount} ETB`);
+    console.log(`Treasury request: ${name} | ${phone} | ${amount} ETB`);
     
     const response = await axios.post(CHAPA_URL, {
       amount: amount,
       currency: "ETB",
-      email: "customer@bayra.et",
+      email: "payment@bayra.et", // System email
       first_name: name || "Passenger",
       last_name: "Gamo",
+      phone_number: phone, // 🔥 THE MISSING LINK
       tx_ref: tx_ref,
       callback_url: "https://bayra-backend-eu.onrender.com/chapa-webhook",
-      "customization[title]": "Bayra Payment",
-      "customization[description]": "Ride Payment for Arba Minch"
+      "customization[title]": "Bayra Ride Payment",
+      "customization[description]": `Trip ID: ${rideId}`
     }, {
       headers: {
         Authorization: `Bearer ${CHAPA_SECRET_KEY}`,
@@ -39,16 +44,15 @@ app.post('/initialize-payment', async (req, res) => {
       }
     });
 
-    // Send the REAL Chapa link back to the phone
     res.json(response.data.data); 
 
   } catch (error) {
-    console.error("CHAPA ERROR:", error.response ? error.response.data : error.message);
+    console.error("CHAPA ERROR:", error.response ? JSON.stringify(error.response.data) : error.message);
     res.status(500).json({ status: "failed", error: "Chapa Handshake Failed" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log('Bayra Sovereign Engine active on port ' + PORT);
+  console.log('Bayra Sovereign Engine running on port ' + PORT);
 });
