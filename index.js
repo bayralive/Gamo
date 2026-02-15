@@ -10,33 +10,30 @@ const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
 const CHAPA_SECRET_KEY = process.env.CHAPA_SECRET_KEY; 
 
 app.get('/', (req, res) => {
-  res.send('BAYRA TREASURY: FULLY OPERATIONAL 🛰️');
+  res.send('BAYRA TREASURY: READY 🛰️');
 });
 
 app.post('/initialize-payment', async (req, res) => {
-  const { amount, name, phone, rideId } = req.body;
+  const { amount, name, phone, email, rideId } = req.body;
   
-  // Validation check
-  if (!phone || phone.length < 9) {
-    return res.status(400).json({ status: "failed", error: "Valid Phone Number Required" });
-  }
+  // ROOT FIX: Generate a dummy email if user didn't provide one, but prefer real email
+  const userEmail = email || `customer-${Date.now()}@bayra.et`;
+  const tx_ref = `BAYRA-${rideId}-${Date.now()}`;
 
-  const tx_ref = `BAYRA-${rideId || Date.now()}`;
+  console.log(`Processing Payment: ${amount} ETB | User: ${name} | Email: ${userEmail}`);
 
   try {
-    console.log(`Treasury request: ${name} | ${phone} | ${amount} ETB`);
-    
     const response = await axios.post(CHAPA_URL, {
       amount: amount,
       currency: "ETB",
-      email: "payment@bayra.et", // System email
+      email: userEmail,
       first_name: name || "Passenger",
-      last_name: "Gamo",
-      phone_number: phone, // 🔥 THE MISSING LINK
+      last_name: "Bayra",
+      phone_number: phone,
       tx_ref: tx_ref,
       callback_url: "https://bayra-backend-eu.onrender.com/chapa-webhook",
-      "customization[title]": "Bayra Ride Payment",
-      "customization[description]": `Trip ID: ${rideId}`
+      "customization[title]": "Bayra Trip",
+      "customization[description]": "Arba Minch Transport Service"
     }, {
       headers: {
         Authorization: `Bearer ${CHAPA_SECRET_KEY}`,
@@ -44,11 +41,18 @@ app.post('/initialize-payment', async (req, res) => {
       }
     });
 
+    console.log("✅ Chapa Success:", response.data.status);
     res.json(response.data.data); 
 
   } catch (error) {
-    console.error("CHAPA ERROR:", error.response ? JSON.stringify(error.response.data) : error.message);
-    res.status(500).json({ status: "failed", error: "Chapa Handshake Failed" });
+    // 🔥 ROOT CAUSE LOGGING
+    if (error.response) {
+      console.error("❌ CHAPA REJECTED REQUEST:", JSON.stringify(error.response.data));
+      res.status(400).json({ status: "failed", error: error.response.data.message });
+    } else {
+      console.error("❌ NETWORK ERROR:", error.message);
+      res.status(500).json({ status: "failed", error: "Internal Server Error" });
+    }
   }
 });
 
