@@ -1,5 +1,6 @@
 package com.bayra.customer
 
+import android.Manifest // 🛡️ THE MISSING WELD
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -32,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.*
-import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
@@ -47,17 +47,16 @@ import kotlin.concurrent.thread
 import kotlin.math.*
 import java.util.*
 
-enum class ServiceTier(val label: String, val base: Int, val kmRate: Double, val extra: Int, val isHr: Boolean) {
-    POOL("Pool", 80, 11.0, 30, false),
-    COMFORT("Comfort", 120, 11.0, 0, false),
-    CODE_3("Code 3", 280, 27.5, 60, false),
-    BAJAJ_HR("Bajaj Hr", 350, 0.0, 0, true),
-    C3_HR("C3 Hr", 550, 0.0, 0, true)
+enum class ServiceTier(val label: String, val base: Int) {
+    POOL("Pool", 80), COMFORT("Comfort", 120), CODE_3("Code 3", 280), BAJAJ_HR("Bajaj Hr", 350)
 }
 
 class MainActivity : ComponentActivity() {
     private var locationOverlay: MyLocationNewOverlay? = null
-    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> 
+    
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted -> 
         if (isGranted) locationOverlay?.enableMyLocation() 
     }
 
@@ -65,7 +64,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = "BayraSovereign"
+        
         setContent { MaterialTheme { PassengerApp() } }
+        
+        // Finalize Permission check
         requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }
@@ -75,21 +77,22 @@ fun PassengerApp() {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("bayra_p_vFINAL", 0)
     
-    // --- 🛡️ TOP LEVEL STATE (Does not die on tab switch) ---
+    // --- 💎 PERSISTENT GLOBAL STATE 💎 ---
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("BOOK") }
     
-    // LIVE BOOKING STATE
+    // LIVE BOOKING STATE (Keeps running when you switch tabs)
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var rideStatus by rememberSaveable { mutableStateOf("IDLE") }
-    var ridePrice by rememberSaveable { mutableStateOf("0") }
+    var ridePrice by rememberSaveable { mutableStateOf("112") }
     var driverName by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (!isAuth) {
         Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-            Text("BAYRA", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color(0xFF5E4E92))
+            Text("BAYRA LOGIN", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF5E4E92))
+            Spacer(Modifier.height(30.dp))
             OutlinedTextField(pName, { pName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(pPhone, { pPhone = it }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
             Button({ if(pName.isNotEmpty() && pPhone.isNotEmpty()){ prefs.edit().putString("n", pName).putString("p", pPhone).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
@@ -109,7 +112,6 @@ fun PassengerApp() {
                         pName, pPhone, isSearching, rideStatus, ridePrice, driverName,
                         onSearchingChange = { isSearching = it },
                         onStatusChange = { rideStatus = it },
-                        onPriceChange = { ridePrice = it },
                         onDriverChange = { driverName = it }
                     )
                 } else {
@@ -131,14 +133,9 @@ fun BookingHub(
     isSearching: Boolean, status: String, price: String, driver: String?,
     onSearchingChange: (Boolean) -> Unit,
     onStatusChange: (String) -> Unit,
-    onPriceChange: (String) -> Unit,
     onDriverChange: (String?) -> Unit
 ) {
     val context = LocalContext.current
-    var step by rememberSaveable { mutableStateOf("PICKUP") }
-    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
-    var destPt by remember { mutableStateOf<GeoPoint?>(null) }
-    var roadDistance by remember { mutableStateOf(0.0) }
     var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
@@ -164,8 +161,8 @@ fun BookingHub(
                     }, Modifier.fillMaxWidth().height(60.dp)) { Text("PAY NOW") }
                 } else {
                     CircularProgressIndicator(color = Color(0xFF5E4E92))
-                    Text(if(driver != null) "$driver IS COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
-                    Button({ onSearchingChange(false) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
+                    Spacer(Modifier.height(20.dp)); Text(if(driver != null) "$driver IS COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
+                    Button({ onSearchingChange(false) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.padding(top = 40.dp)) { Text("CANCEL") }
                 }
             }
         } else {
@@ -178,12 +175,11 @@ fun BookingHub(
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(20.dp))
                 Button({
                     val ref = FirebaseDatabase.getInstance().getReference("rides")
                     val id = "R_${System.currentTimeMillis()}"
-                    onPriceChange("112")
-                    ref.child(id).setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "112"))
+                    ref.child(id).setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to price))
                     onSearchingChange(true)
                     ref.child(id).addValueEventListener(object : ValueEventListener {
                         override fun onDataChange(s: DataSnapshot) {
