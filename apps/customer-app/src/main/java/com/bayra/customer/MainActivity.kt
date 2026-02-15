@@ -4,13 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.preference.PreferenceManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -39,34 +36,31 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("bayra_p_vFINAL", 0)
-    
+    val prefs = context.getSharedPreferences("bayra_vFINAL", 0)
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
-    var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var rideStatus by rememberSaveable { mutableStateOf("IDLE") }
-    var ridePrice by rememberSaveable { mutableStateOf("0") }
+    var ridePrice by rememberSaveable { mutableStateOf("120") }
     var isGeneratingLink by remember { mutableStateOf(false) }
 
     if (!isAuth) {
         Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-            Text(text = "BAYRA", fontSize = 48.sp, fontWeight = FontWeight.Black, color = Color(0xFF5E4E92))
-            OutlinedTextField(value = pName, onValueChange = { pName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = pPhone, onValueChange = { pPhone = it }, label = { Text(text = "Phone") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { if(pName.isNotEmpty()){ prefs.edit().putString("n", pName).putString("p", pPhone).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text(text = "ENTER") }
+            Text("BAYRA", fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+            OutlinedTextField(pName, { pName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+            Button({ if(pName.isNotEmpty()){ prefs.edit().putString("n", pName).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
         }
     } else {
         Box(Modifier.fillMaxSize().background(Color.White)) {
             if (rideStatus == "COMPLETED") {
                 Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-                    Text(text = "TRIP FINISHED", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
-                    Text(text = "$ridePrice ETB", fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(modifier = Modifier.height(40.dp))
+                    Text("TRIP FINISHED", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
+                    Text("$ridePrice ETB", fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.height(40.dp))
                     
                     if (isGeneratingLink) {
                         CircularProgressIndicator(color = Color(0xFF5E4E92))
-                        Text(text = "Opening Secure Vault...", fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                        Text("Connecting to Bank...", modifier = Modifier.padding(10.dp))
                     } else {
                         Button(
                             onClick = { 
@@ -78,10 +72,11 @@ fun PassengerApp() {
                                         conn.requestMethod = "POST"
                                         conn.setRequestProperty("Content-Type", "application/json")
                                         conn.doOutput = true
-                                        val body = JSONObject().put("amount", ridePrice).put("email", "customer@bayra.et").toString()
+                                        val body = JSONObject().put("amount", ridePrice).put("name", pName).toString()
                                         conn.outputStream.write(body.toByteArray())
                                         
                                         val response = conn.inputStream.bufferedReader().readText()
+                                        // 🔥 THE FIX: Extracting the real checkout_url from Backend
                                         val chapaUrl = JSONObject(response).getString("checkout_url")
                                         
                                         isGeneratingLink = false
@@ -89,32 +84,25 @@ fun PassengerApp() {
                                         rideStatus = "IDLE"; isSearching = false 
                                     } catch (e: Exception) {
                                         isGeneratingLink = false
-                                        // FINAL FALLBACK TO DIRECT LINK IF SERVER LAGS
-                                        val fallback = "https://checkout.chapa.co/checkout/web/payment/CHAPUBK-GTviouToMOe9vOg5t1dNR9paQ1M62jOX"
+                                        // 🛡️ FINAL FALLBACK: Direct link if backend times out
+                                        val fallback = "https://checkout.chapa.co/checkout/web/payment/CHAPUBK-rsiltQmE5SqOK21Qqs6UTV7vjCsXycBc"
                                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallback)))
                                     }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(65.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))
-                        ) { Text(text = "PAY WITH CHAPA", fontWeight = FontWeight.Bold) }
-                        TextButton(onClick = { rideStatus = "IDLE"; isSearching = false }) { Text(text = "PAID WITH CASH", color = Color.Gray) }
+                        ) { Text("PAY NOW", fontWeight = FontWeight.Bold) }
+                        TextButton({ rideStatus = "IDLE"; isSearching = false }) { Text("PAID WITH CASH", color = Color.Gray) }
                     }
-                }
-            } else if (isSearching) {
-                Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Color(0xFF5E4E92))
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(text = "SEARCHING...", fontWeight = FontWeight.Bold)
-                    Button(onClick = { isSearching = false }, modifier = Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "CANCEL") }
                 }
             } else {
                 Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
-                    Text(text = "📍", fontSize = 60.sp)
+                    Text("📍", fontSize = 60.sp)
                     Button(onClick = {
                         val id = "R_${System.currentTimeMillis()}"
                         FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to pName, "status" to "REQUESTED", "price" to "120"))
-                        ridePrice = "120"; isSearching = true
+                        isSearching = true
                         FirebaseDatabase.getInstance().getReference("rides/$id").addValueEventListener(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (!s.exists() && isSearching) { isSearching = false; rideStatus = "COMPLETED"; return }
@@ -122,7 +110,7 @@ fun PassengerApp() {
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
-                    }, Modifier.padding(24.dp).fillMaxWidth().height(65.dp)) { Text(text = "CONFIRM 120 ETB") }
+                    }, Modifier.padding(24.dp).fillMaxWidth().height(65.dp)) { Text("BOOK FOR 120 ETB") }
                 }
             }
         }
