@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -17,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.*
@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val context = LocalContext.current
-    val prefs = context.getSharedPreferences("bayra_vFINAL", 0)
+    val prefs = context.getSharedPreferences("bayra_p_vFINAL", 0)
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
     var isSearching by rememberSaveable { mutableStateOf(false) }
@@ -46,7 +46,7 @@ fun PassengerApp() {
 
     if (!isAuth) {
         Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-            Text("BAYRA", fontSize = 48.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+            Text("BAYRA LOGIN", fontSize = 28.sp, color = Color(0xFF5E4E92))
             OutlinedTextField(pName, { pName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             Button({ if(pName.isNotEmpty()){ prefs.edit().putString("n", pName).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
         }
@@ -54,13 +54,12 @@ fun PassengerApp() {
         Box(Modifier.fillMaxSize().background(Color.White)) {
             if (rideStatus == "COMPLETED") {
                 Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-                    Text("TRIP FINISHED", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
-                    Text("$ridePrice ETB", fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(Modifier.height(40.dp))
+                    Text("ARRIVED!", fontSize = 32.sp, color = Color(0xFF4CAF50))
+                    Text("$ridePrice ETB", fontSize = 48.sp)
+                    Spacer(modifier = Modifier.height(40.dp))
                     
                     if (isGeneratingLink) {
                         CircularProgressIndicator(color = Color(0xFF5E4E92))
-                        Text("Connecting to Bank...", modifier = Modifier.padding(10.dp))
                     } else {
                         Button(
                             onClick = { 
@@ -76,7 +75,6 @@ fun PassengerApp() {
                                         conn.outputStream.write(body.toByteArray())
                                         
                                         val response = conn.inputStream.bufferedReader().readText()
-                                        // 🔥 THE FIX: Extracting the real checkout_url from Backend
                                         val chapaUrl = JSONObject(response).getString("checkout_url")
                                         
                                         isGeneratingLink = false
@@ -84,19 +82,18 @@ fun PassengerApp() {
                                         rideStatus = "IDLE"; isSearching = false 
                                     } catch (e: Exception) {
                                         isGeneratingLink = false
-                                        // 🛡️ FINAL FALLBACK: Direct link if backend times out
-                                        val fallback = "https://checkout.chapa.co/checkout/web/payment/CHAPUBK-rsiltQmE5SqOK21Qqs6UTV7vjCsXycBc"
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallback)))
+                                        // Final Hard Fallback
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chapa.co")))
                                     }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(65.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))
-                        ) { Text("PAY NOW", fontWeight = FontWeight.Bold) }
-                        TextButton({ rideStatus = "IDLE"; isSearching = false }) { Text("PAID WITH CASH", color = Color.Gray) }
+                        ) { Text("PAY NOW", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
                     }
                 }
             } else {
+                // BOOKING HUB
                 Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
                     Text("📍", fontSize = 60.sp)
                     Button(onClick = {
