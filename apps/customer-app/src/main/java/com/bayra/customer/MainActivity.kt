@@ -1,6 +1,5 @@
 package com.bayra.customer
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,14 +9,12 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,10 +37,8 @@ import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
-import java.net.HttpURLConnection
 import java.net.URL
+import java.net.HttpURLConnection
 import kotlin.concurrent.thread
 import kotlin.math.*
 import java.util.*
@@ -57,17 +52,11 @@ enum class ServiceTier(val label: String, val base: Int, val kmRate: Double, val
 }
 
 class MainActivity : ComponentActivity() {
-    private var locationOverlay: MyLocationNewOverlay? = null
-    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted -> 
-        if (isGranted) locationOverlay?.enableMyLocation() 
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = "BayraSovereign"
         setContent { MaterialTheme { PassengerApp() } }
-        requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }
 
@@ -75,175 +64,167 @@ class MainActivity : ComponentActivity() {
 fun PassengerApp() {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("bayra_p_vFINAL", Context.MODE_PRIVATE)
-    
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
-    var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
+    var currentTab by rememberSaveable { mutableStateOf("BOOK") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+    var rideStatus by rememberSaveable { mutableStateOf("IDLE") }
+    var ridePrice by rememberSaveable { mutableStateOf("0") }
+    var activeRideId by rememberSaveable { mutableStateOf("") }
+    var driverName by rememberSaveable { mutableStateOf<String?>(null) }
+    
+    // 🔥 HOISTED BOOKING STATE
+    var step by rememberSaveable { mutableStateOf("PICKUP") }
+    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var destPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var roadDistance by remember { mutableStateOf(0.0) }
+    var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
+    var hrCount by remember { mutableStateOf(1) }
+    var paymentMethod by remember { mutableStateOf("CASH") }
 
     if (!isAuth) {
         Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
             Text("BAYRA LOGIN", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
-            Spacer(Modifier.height(20.dp))
             OutlinedTextField(pName, { pName = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(pPhone, { pPhone = it }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(pEmail, { pEmail = it }, label = { Text("Email (Optional)") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = { if(pName.isNotEmpty() && pPhone.length > 8){ 
-                prefs.edit().putString("n", pName).putString("p", pPhone).putString("e", pEmail).apply()
-                isAuth = true 
-            } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
+            Button({ if(pName.isNotEmpty() && pPhone.length > 8){ prefs.edit().putString("n", pName).putString("p", pPhone).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp)) { Text("ENTER") }
         }
     } else {
-        BookingHub(pName, pPhone, pEmail)
+        Scaffold(
+            bottomBar = {
+                NavigationBar(containerColor = Color.White) {
+                    NavigationBarItem(selected = currentTab == "BOOK", onClick = { currentTab = "BOOK" }, icon = { Text("🚕") }, label = { Text("Book") })
+                    NavigationBarItem(selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, icon = { Text("👤") }, label = { Text("Account") })
+                }
+            }
+        ) { p ->
+            Box(Modifier.padding(p)) {
+                if (currentTab == "BOOK") {
+                    BookingHub(
+                        pName, pPhone, isSearching, rideStatus, ridePrice, driverName, activeRideId, 
+                        step, pickupPt, destPt, roadDistance, selectedTier, hrCount, paymentMethod,
+                        { isSearching = it }, { rideStatus = it }, { ridePrice = it }, { driverName = it }, { activeRideId = it },
+                        { step = it }, { pickupPt = it }, { destPt = it }, { roadDistance = it }, { selectedTier = it }, { hrCount = it }, { paymentMethod = it }
+                    )
+                } else {
+                    Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ACCOUNT", fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(pName); Text(pPhone, color = Color.Gray)
+                        Spacer(Modifier.weight(1f)); Button({ prefs.edit().clear().apply(); isAuth = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("LOGOUT") }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun BookingHub(pName: String, pPhone: String, pEmail: String) {
+fun BookingHub(
+    name: String, phone: String, isSearching: Boolean, status: String, price: String, driver: String?, activeRideId: String,
+    step: String, pickupPt: GeoPoint?, destPt: GeoPoint?, roadDistance: Double, selectedTier: ServiceTier, hrCount: Int, paymentMethod: String,
+    onSearch: (Boolean) -> Unit, onStatus: (String) -> Unit, onPrice: (String) -> Unit, onDriver: (String?) -> Unit, onRideId: (String) -> Unit,
+    onStep: (String) -> Unit, onPickup: (GeoPoint?) -> Unit, onDest: (GeoPoint?) -> Unit, onDist: (Double) -> Unit, onTier: (ServiceTier) -> Unit, onHr: (Int) -> Unit, onPay: (String) -> Unit
+) {
     val context = LocalContext.current
-    var step by remember { mutableStateOf("PICKUP") }
-    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
-    var destPt by remember { mutableStateOf<GeoPoint?>(null) }
-    var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
-    var roadDistance by remember { mutableStateOf(0.0) }
-    var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
-    var hrCount by remember { mutableStateOf(1) }
-    
-    var isSearching by remember { mutableStateOf(false) }
-    var rideStatus by remember { mutableStateOf("IDLE") }
-    var ridePrice by remember { mutableStateOf("0") }
-    var activeRideId by remember { mutableStateOf("") }
-    var driverName by remember { mutableStateOf<String?>(null) }
-    var isGeneratingLink by remember { mutableStateOf(false) }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-
+    var routePoints by remember { mutableStateOf<List<GeoPoint>>(listOf()) }
     val isNight = Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it >= 20 || it < 6 }
-    val calculatedFare = remember(selectedTier, roadDistance, hrCount, isNight) {
+    val fare = remember(selectedTier, roadDistance, hrCount, isNight) {
         if (selectedTier.isHr) ((selectedTier.base + (if(isNight) 100 else 0)) * hrCount * 1.15).toInt()
         else ((selectedTier.base + (roadDistance * selectedTier.kmRate) + selectedTier.extra + (if(isNight) 200 else 0)) * 1.15).toInt()
     }
 
     Box(Modifier.fillMaxSize()) {
-        // --- 🛰️ MAP LAYER ---
-        AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
-            MapView(ctx).apply {
-                setTileSource(object : XYTileSource("Google-Hybrid", 0, 20, 256, ".jpg", arrayOf("https://mt1.google.com/vt/lyrs=y&")) {
-                    override fun getTileURLString(pTileIndex: Long): String = baseUrl + "x=" + MapTileIndex.getX(pTileIndex) + "&y=" + MapTileIndex.getY(pTileIndex) + "&z=" + MapTileIndex.getZoom(pTileIndex)
-                })
-                setMultiTouchControls(true); controller.setZoom(17.0); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                val overlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this).apply { enableMyLocation(); enableFollowLocation() }
-                overlays.add(overlay)
-                mapViewRef = this
-            }
-        }, update = { view ->
-            view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
-            view.overlays.filterIsInstance<Polyline>().forEach { view.overlays.remove(it) }
+        AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx -> MapView(ctx).apply { 
+            setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true); controller.setZoom(17.0); controller.setCenter(GeoPoint(6.0333, 37.5500)); mapViewRef = this 
+        } }, update = { view ->
+            view.overlays.clear()
             pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
             if(!selectedTier.isHr && destPt != null) {
-                Marker(view).apply { position = destPt!!; icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) }
-                if(routePoints.isNotEmpty()) Polyline().apply { setPoints(routePoints); color = android.graphics.Color.WHITE; width = 12f }.also { view.overlays.add(it) }
+                Marker(view).apply { position = destPt; icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) }
+                if(routePoints.isNotEmpty()) Polyline().apply { setPoints(routePoints); color = android.graphics.Color.BLACK; width = 10f }.also { view.overlays.add(it) }
             }
             view.invalidate()
         })
 
-        // --- PIN CROSSHAIR ---
-        if (step != "CONFIRM" && !isSearching && rideStatus != "COMPLETED") {
-            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if(step == "PICKUP") "PICKUP" else "DEST", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.background(Color.Black.copy(alpha=0.6f)).padding(4.dp))
-                    Canvas(Modifier.size(35.dp)) {
-                        val path = Path().apply { moveTo(size.width/2, size.height); cubicTo(0f, size.height/2, size.width/4, 0f, size.width/2, 0f); cubicTo(3*size.width/4, 0f, size.width, size.height/2, size.width/2, size.height) }
-                        drawPath(path, Color.Black)
-                    }
+        if (isSearching || status == "COMPLETED") {
+            Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                if (status == "COMPLETED") {
+                    Text("TRIP FINISHED", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                    Text("$price ETB", fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                    Button({ 
+                        thread { try {
+                            val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
+                            val conn = url.openConnection() as HttpURLConnection
+                            conn.requestMethod = "POST"; conn.doOutput = true; conn.setRequestProperty("Content-Type", "application/json")
+                            val body = JSONObject().put("amount", price).put("name", name).put("phone", phone).put("rideId", activeRideId).toString()
+                            conn.outputStream.write(body.toByteArray())
+                            val chapaUrl = JSONObject(conn.inputStream.bufferedReader().readText()).getString("checkout_url")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(chapaUrl)))
+                            onStatus("IDLE"); onSearch(false)
+                        } catch (e: Exception) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chapa.co"))) } }
+                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("PAY WITH CHAPA") }
+                    TextButton({ onStatus("IDLE"); onSearch(false) }) { Text("PAID WITH CASH") }
+                } else {
+                    CircularProgressIndicator(color = Color(0xFF5E4E92)); Spacer(Modifier.height(20.dp))
+                    Text(if(driver != null) "$driver IS COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
+                    Button({ onSearch(false) }, Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
                 }
             }
-        }
-
-        // --- UI OVERLAY ---
-        if (rideStatus == "COMPLETED") {
-            Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-                Text("ARRIVED!", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
-                Text("$ridePrice ETB", fontSize = 48.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(30.dp))
-                if(isGeneratingLink) CircularProgressIndicator(color = Color(0xFF5E4E92))
-                else Button(onClick = { 
-                    isGeneratingLink = true
-                    thread { try {
-                        val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
-                        val conn = url.openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"; conn.doOutput = true; conn.setRequestProperty("Content-Type", "application/json")
-                        val body = JSONObject().put("amount", ridePrice).put("name", pName).put("phone", pPhone).put("email", pEmail).put("rideId", activeRideId).toString()
-                        conn.outputStream.write(body.toByteArray())
-                        val chapaUrl = JSONObject(conn.inputStream.bufferedReader().readText()).getString("checkout_url")
-                        isGeneratingLink = false
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(chapaUrl)))
-                        rideStatus = "IDLE"; isSearching = false
-                    } catch (e: Exception) { isGeneratingLink = false; context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chapa.co"))) } }
-                }, Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("PAY WITH CHAPA") }
-                TextButton({ rideStatus = "IDLE"; isSearching = false }) { Text("PAID WITH CASH") }
-            }
-        } else if (isSearching) {
-            Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Color(0xFF5E4E92))
-                Spacer(Modifier.height(20.dp))
-                Text(if(driverName != null) "$driverName IS COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
-                Button({ isSearching = false }, Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
-            }
         } else {
+            if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { 
+                Text(if(step=="PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp))
+            }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(ServiceTier.values()) { tier ->
-                        val sel = selectedTier == tier
-                        Surface(Modifier.clickable { selectedTier = tier; if(tier.isHr) step = "CONFIRM" else step = "PICKUP" }, color = if(sel) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
-                            Text(tier.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold, color = if(sel) Color.White else Color.Black)
+                        Surface(Modifier.clickable { 
+                            onTier(tier)
+                            if(tier.isHr) { if(pickupPt != null) onStep("CONFIRM") else onStep("PICKUP") }
+                            else { if(pickupPt != null && destPt != null) onStep("CONFIRM") else if(pickupPt != null) onStep("DEST") else onStep("PICKUP") }
+                        }, color = if(selectedTier == tier) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
+                            Text(tier.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold, color = if(selectedTier == tier) Color.White else Color.Black)
                         }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                if (step == "PICKUP") Button({ pickupPt = mapViewRef?.mapCenter as GeoPoint; step = if (selectedTier.isHr) "CONFIRM" else "DEST" }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("SET PICKUP") }
+                if (step == "PICKUP") Button({ onPickup(mapViewRef?.mapCenter as GeoPoint); onStep(if(selectedTier.isHr) "CONFIRM" else "DEST") }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("SET PICKUP") }
                 else if (step == "DEST") Button({ 
-                    val end = mapViewRef?.mapCenter as GeoPoint; destPt = end
+                    val end = mapViewRef?.mapCenter as GeoPoint; onDest(end)
                     thread { try {
                         val url = "https://router.project-osrm.org/route/v1/driving/${pickupPt!!.longitude},${pickupPt!!.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson"
                         val json = JSONObject(URL(url).readText()); val route = json.getJSONArray("routes").getJSONObject(0)
-                        roadDistance = route.getDouble("distance") / 1000.0
+                        onDist(route.getDouble("distance") / 1000.0)
                         val geometry = route.getJSONObject("geometry").getJSONArray("coordinates"); val pts = mutableListOf<GeoPoint>()
                         for (i in 0 until geometry.length()) { pts.add(GeoPoint(geometry.getJSONArray(i).getDouble(1), geometry.getJSONArray(i).getDouble(0))) }
-                        routePoints = pts; step = "CONFIRM"
+                        routePoints.clear(); routePoints.addAll(pts); onStep("CONFIRM")
                     } catch (e: Exception) {} }
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("SET DESTINATION") }
                 else {
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Column { Text(if(selectedTier.isHr) "12KM/HR LIMIT" else "${"%.1f".format(roadDistance)} KM", color = Color.Gray); Text("$calculatedFare ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.Red) }
-                        if(selectedTier.isHr) { Row(verticalAlignment = Alignment.CenterVertically) {
-                            Button({if(hrCount > 1) hrCount--}, Modifier.size(36.dp), contentPadding = PaddingValues(0.dp)) { Text("-") }
+                        Column { Text(if(selectedTier.isHr) "12KM/H LIMIT" else "${"%.1f".format(roadDistance)} KM", color = Color.Gray); Text("$fare ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.Red) }
+                        if(selectedTier.isHr) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button({if(hrCount > 1) onHr(hrCount-1)}, Modifier.size(36.dp), contentPadding = PaddingValues(0.dp)) { Text("-") }
                             Text("$hrCount HR", Modifier.padding(horizontal = 8.dp))
-                            Button({if(hrCount < 12) hrCount++}, Modifier.size(36.dp), contentPadding = PaddingValues(0.dp)) { Text("+") }
-                        } } else {
-                            TextButton({ step = "PICKUP"; pickupPt = null; destPt = null; routePoints = listOf(); roadDistance = 0.0 }) { Text("RESET MAP") }
-                        }
+                            Button({if(hrCount < 12) onHr(hrCount+1)}, Modifier.size(36.dp), contentPadding = PaddingValues(0.dp)) { Text("+") }
+                        } else Row { listOf("CASH", "CHAPA").forEach { m -> Surface(Modifier.clickable { onPay(m) }.padding(4.dp), color = if(paymentMethod == m) Color(0xFF5E4E92) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) { Text(m, Modifier.padding(6.dp), fontSize = 10.sp, color = if(paymentMethod==m) Color.White else Color.Black) } } }
                     }
                     Spacer(Modifier.height(16.dp))
                     Button({
-                        val id = "R_${System.currentTimeMillis()}"; activeRideId = id; ridePrice = calculatedFare.toString(); isSearching = true
-                        // 🔥 COORDINATE WELD: Passing pLat/pLon/dLat/dLon correctly
-                        val data = mapOf(
-                            "id" to id, "pName" to pName, "pPhone" to pPhone, 
-                            "status" to "REQUESTED", "price" to ridePrice, "tier" to selectedTier.label,
-                            "pLat" to (pickupPt?.latitude ?: 0.0), "pLon" to (pickupPt?.longitude ?: 0.0),
-                            "dLat" to (destPt?.latitude ?: 0.0), "dLon" to (destPt?.longitude ?: 0.0)
-                        )
-                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(data)
+                        val id = "R_${System.currentTimeMillis()}"
+                        onRideId(id); onPrice(fare.toString()); onSearch(true)
+                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to fare.toString(), "tier" to selectedTier.label, "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude))
                         FirebaseDatabase.getInstance().getReference("rides/$id").addValueEventListener(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
-                                if (!s.exists() && isSearching) { isSearching = false; rideStatus = "COMPLETED"; return }
-                                rideStatus = s.child("status").getValue(String::class.java) ?: "REQUESTED"
-                                driverName = s.child("driverName").getValue(String::class.java)
+                                if (!s.exists() && isSearching) { onSearch(false); onStatus("COMPLETED"); return }
+                                onStatus(s.child("status").getValue(String::class.java) ?: "REQUESTED")
+                                onDriver(s.child("driverName").getValue(String::class.java))
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
-                    }, Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK ${selectedTier.label.uppercase()}") }
+                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK ${selectedTier.label.uppercase()}") }
+                    TextButton({ onStep("PICKUP"); onPickup(null); onDest(null); onDist(0.0) }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
                 }
             }
         }
