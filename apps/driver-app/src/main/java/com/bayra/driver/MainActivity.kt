@@ -1,8 +1,5 @@
 package com.bayra.driver
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
@@ -16,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -24,9 +22,9 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker // 🛡️ THE MISSING IMPORT
+import org.osmdroid.views.overlay.Marker
 
-data class Ride(val id: String = "", val pName: String = "", val price: String = "0", val status: String = "", val pLat: Double = 0.0, val pLon: Double = 0.0)
+data class Ride(val id: String = "", val pName: String = "", val price: String = "0", val status: String = "")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,72 +32,74 @@ class MainActivity : ComponentActivity() {
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         setContent { MaterialTheme { DriverEngine() } }
     }
-    fun dial(n: String) = startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$n")))
 }
 
 @Composable
 fun DriverEngine() {
-    val context = LocalContext.current as MainActivity
-    val prefs = context.getSharedPreferences("bayra_d_vFinal", 0)
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("bayra_d_vFinal", Context.MODE_PRIVATE)
     var name by remember { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(name.isNotEmpty()) }
 
     if (!isAuth) {
-        Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-            Text("BAYRA DRIVER", fontSize = 28.sp, color = Color(0xFF5E4E92))
+        Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+            Spacer(Modifier.height(20.dp))
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth()) { Text("LOGIN") }
+            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("LOGIN") }
         }
-    } else { RadarView(name, context) }
+    } else {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Text("RADAR: $name", fontWeight = FontWeight.Bold)
+                TextButton({ prefs.edit().clear().apply(); isAuth = false }) { Text("LOGOUT", color = Color.Red) }
+            }
+            Spacer(Modifier.height(16.dp)); RadarView(name)
+        }
+    }
 }
 
 @Composable
-fun RadarView(dName: String, activity: MainActivity) {
+fun RadarView(dName: String) {
     val ref = FirebaseDatabase.getInstance().getReference("rides")
     var rides by remember { mutableStateOf(listOf<Ride>()) }
-    var active by remember { mutableStateOf<Ride?>(null) }
+    var activeRide by remember { mutableStateOf<Ride?>(null) }
 
     LaunchedEffect(Unit) {
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 val list = mutableListOf<Ride>()
-                var curr: Ride? = null
+                var current: Ride? = null
                 s.children.forEach {
                     val status = it.child("status").getValue(String::class.java) ?: ""
-                    val ride = Ride(it.child("id").getValue(String::class.java) ?: "", it.child("pName").getValue(String::class.java) ?: "User", it.child("price").value?.toString() ?: "0", status, it.child("pLat").getValue(Double::class.java) ?: 0.0, it.child("pLon").getValue(Double::class.java) ?: 0.0)
+                    val ride = Ride(it.child("id").getValue(String::class.java) ?: "", it.child("pName").getValue(String::class.java) ?: "User", it.child("price").value?.toString() ?: "0", status)
                     if (status == "REQUESTED") list.add(ride)
-                    else if (it.child("driverName").getValue(String::class.java) == dName && status != "COMPLETED") curr = ride
+                    else if (it.child("driverName").getValue(String::class.java) == dName && status != "COMPLETED") current = ride
                 }
-                rides = list; active = curr
+                rides = list; activeRide = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } }, update = { view ->
-            view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
-            active?.let { Marker(view).apply { position = GeoPoint(it.pLat, it.pLon); setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
-            view.invalidate()
-        })
-        Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-            if (active != null) {
+    if (activeRide != null) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("ACTIVE: ${activeRide!!.pName}", fontWeight = FontWeight.Bold)
+                Text("${activeRide!!.price} ETB", fontSize = 32.sp, color = Color.Red, fontWeight = FontWeight.Black)
+                Button({ ref.child(activeRide!!.id).child("status").setValue("COMPLETED") }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("FINISH TRIP") }
+            }
+        }
+    } else {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(rides) { ride ->
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("ACTIVE: ${active!!.pName}", fontWeight = FontWeight.Bold)
-                        Text("${active!!.price} ETB", fontSize = 32.sp, color = Color.Red)
-                        Button({ ref.child(active!!.id).child("status").setValue("COMPLETED") }, Modifier.fillMaxWidth()) { Text("FINISH") }
+                    Column(Modifier.padding(16.dp)) {
+                        Text(ride.pName, fontWeight = FontWeight.Bold)
+                        Text("${ride.price} ETB", color = Color.Red, fontWeight = FontWeight.Black)
+                        Button({ ref.child(ride.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }, Modifier.fillMaxWidth()) { Text("ACCEPT") }
                     }
                 }
-            } else {
-                LazyColumn { items(rides) { ride -> 
-                    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        Row(Modifier.padding(16.dp).fillMaxWidth(), Arrangement.SpaceBetween) {
-                            Column { Text(ride.pName, fontWeight = FontWeight.Bold); Text("${ride.price} ETB") }
-                            Button({ ref.child(ride.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }) { Text("ACCEPT") }
-                        }
-                    }
-                } }
             }
         }
     }

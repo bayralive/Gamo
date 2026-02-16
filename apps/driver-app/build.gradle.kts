@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 34
-        versionCode = 120
-        versionName = "1.2.0-Sovereign"
+        versionCode = 125
+        versionName = "1.2.5-Native"
         multiDexEnabled = true
     }
     buildFeatures { compose = true }
@@ -19,6 +19,7 @@ android {
     kotlinOptions { jvmTarget = "1.8" }
 }
 dependencies {
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation(platform("androidx.compose:compose-bom:2023.06.01"))
     implementation("androidx.compose.ui:ui")
