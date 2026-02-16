@@ -4,21 +4,17 @@ import android.app.*
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.google.android.gms.location.*
-import com.google.firebase.database.FirebaseDatabase
 
 class BeaconService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val rideId = intent?.getStringExtra("rideId") ?: "unknown"
-        val channelId = "bayra_tracking"
-        val channel = NotificationChannel(channelId, "Bayra Active Trip", NotificationManager.IMPORTANCE_LOW)
+        val channelId = "bayra_beacon"
+        val channel = NotificationChannel(channelId, "Driver Live Tracking", NotificationManager.IMPORTANCE_LOW)
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Bayra: You are Live")
-            .setContentText("Sharing location with passenger in Arba Minch")
+            .setContentTitle("Bayra Beacon Active")
+            .setContentText("Your location is being shared with the passenger")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setOngoing(true)
             .build()
 
         startForeground(1, notification)
