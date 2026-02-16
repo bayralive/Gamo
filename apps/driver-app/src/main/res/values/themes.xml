@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Material3.DayNight" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">#5E4E92</item>
+    <!-- Use a base that is guaranteed to be found if Material3 is linked -->
+    <style name="Theme.Material3.DayNight" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#5E4E92</item>
         <item name="android:statusBarColor">#5E4E92</item>
     </style>
 </resources>
