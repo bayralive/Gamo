@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.bayra.driver"
     compileSdk = 34
+
     defaultConfig {
         applicationId = "com.bayra.driver"
         minSdk = 24
@@ -14,12 +15,22 @@ android {
         versionName = "1.0"
         vectorDrawables { useSupportLibrary = true }
     }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = "11" // 🔥 ALIGNED WITH JAVA 11
+    }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
-    kotlinOptions { 
-        jvmTarget = "11" 
-        freeCompilerArgs = freeCompilerArgs + "-P" + "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.8.0"
-    }
 }
 
 dependencies {
@@ -28,7 +39,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2023.01.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("com.google.android.gms:play-services-location:21.0.1") // 🔥 REQUIRED FOR RADAR
+    implementation("androidx.compose.material:material-icons-extended") // 🔥 REQUIRED FOR CALL ICON
     implementation("com.google.firebase:firebase-database-ktx:20.2.2")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
