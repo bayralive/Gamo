@@ -12,11 +12,12 @@
 
     <application
         android:label="Bayra Driver"
-        android:icon="@drawable/ic_launcher_bayra"
+        android:icon="@android:drawable/ic_menu_mylocation"
         android:theme="@style/Theme.Material3.DayNight">
         
         <service 
             android:name=".BeaconService"
+            android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
 
