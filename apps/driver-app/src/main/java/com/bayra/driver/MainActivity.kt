@@ -43,11 +43,11 @@ fun DriverCore() {
     var isAuth by remember { mutableStateOf(name.isNotEmpty()) }
 
     if (!isAuth) {
-        Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center) {
-            Text("BAYRA DRIVER", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center) {
+            Text(text = "BAYRA DRIVER", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.Black)
             var nIn by remember { mutableStateOf("") }
-            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text("Driver Name") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { if(nIn.isNotEmpty()){ prefs.edit().putString("n", nIn).apply(); name=nIn; isAuth=true } }, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("LOGIN") }
+            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text("Enter Driver Name") }, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { if(nIn.isNotEmpty()){ prefs.edit().putString("n", nIn).apply(); name=nIn; isAuth=true } }, Modifier.fillMaxWidth().padding(top = 16.dp).height(60.dp)) { Text("ACTIVATE RADAR") }
         }
     } else {
         val ref = FirebaseDatabase.getInstance().getReference("rides")
@@ -71,30 +71,30 @@ fun DriverCore() {
         }
 
         Box(Modifier.fillMaxSize()) {
-            AndroidView(factory = { MapView(it).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } })
+            AndroidView(factory = { MapView(it).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.5); controller.setCenter(GeoPoint(6.0333, 37.5500)) } })
             Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
                 if (active != null) {
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(10.dp)) {
                         Column(Modifier.padding(20.dp)) {
-                            Text("${active!!.price} ETB", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.Red)
-                            Text("Passenger: ${active!!.pName}")
-                            Row(Modifier.fillMaxWidth().padding(top = 10.dp), Arrangement.spacedBy(8.dp)) {
+                            Text(text = "${active!!.price} ETB", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.Red)
+                            Text(text = "Passenger: ${active!!.pName}", fontWeight = FontWeight.Bold)
+                            Row(Modifier.fillMaxWidth().padding(top = 16.dp), Arrangement.spacedBy(8.dp)) {
                                 val isOn = active!!.status == "ON_TRIP"
-                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${if(isOn) active!!.dLat else active!!.pLat},${if(isOn) active!!.dLon else active!!.pLon}")).apply { setPackage("com.google.android.apps.maps") }) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text(if(isOn) "NAV DROP" else "NAV PICKUP") }
+                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${if(isOn) active!!.dLat else active!!.pLat},${if(isOn) active!!.dLon else active!!.pLon}")).apply { setPackage("com.google.android.apps.maps") }) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text(text = if(isOn) "NAV DROP" else "NAV PICKUP") }
                                 Button(onClick = { 
                                     val next = when(active!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
                                     ref.child(active!!.id).child("status").setValue(next)
-                                }, Modifier.weight(1f)) { Text(when(active!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "START"; else -> "FINISH" }) }
+                                }, Modifier.weight(1f)) { Text(text = when(active!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "START"; else -> "FINISH" }) }
                             }
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 250.dp)) {
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
                         items(rides) { r ->
-                            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                                 Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                                    Column { Text(r.pName, fontWeight = FontWeight.Bold); Text("${r.price} ETB") }
-                                    Button(onClick = { ref.child(r.id).updateChildren(mapOf("status" to "ACCEPTED", "driver" to name)) }) { Text("ACCEPT") }
+                                    Column { Text(text = r.pName, fontWeight = FontWeight.Bold); Text(text = "${r.price} ETB", color = Color(0xFF5E4E92), fontWeight = FontWeight.Black) }
+                                    Button(onClick = { ref.child(r.id).updateChildren(mapOf("status" to "ACCEPTED", "driver" to name)) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("ACCEPT") }
                                 }
                             }
                         }
