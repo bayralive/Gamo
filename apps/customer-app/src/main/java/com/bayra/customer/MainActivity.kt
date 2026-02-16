@@ -37,7 +37,7 @@ import com.google.firebase.database.*
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.XYTileSource
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory // 🛡️ IMPORT RESTORED
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
@@ -80,7 +80,7 @@ fun PassengerApp() {
     
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
-    var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") } // 📧 ESSENTIAL EMAIL
+    var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty() && pEmail.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("BOOK") }
     
@@ -90,27 +90,26 @@ fun PassengerApp() {
     var driverName by rememberSaveable { mutableStateOf<String?>(null) }
     var dPhone by rememberSaveable { mutableStateOf<String?>(null) }
     var activeRideId by rememberSaveable { mutableStateOf("") }
-
-    // HOISTED MAP STATE
     var step by rememberSaveable { mutableStateOf("PICKUP") }
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var roadDistance by remember { mutableStateOf(0.0) }
     var selectedTier by remember { mutableStateOf(ServiceTier.COMFORT) }
     var hrCount by remember { mutableStateOf(1) }
+    var paymentMethod by rememberSaveable { mutableStateOf("CASH") }
 
     if (!isAuth) {
         Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "BAYRA PASSENGER", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+            Text(text = "BAYRA LOGIN", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
             Spacer(modifier = Modifier.height(20.dp))
-            OutlinedTextField(value = pName, onValueChange = { pName = it }, label = { Text(text = "Full Name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = pPhone, onValueChange = { pPhone = it }, label = { Text(text = "Phone Number") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = pEmail, onValueChange = { pEmail = it }, label = { Text(text = "Email Address (for Chapa)") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pName, onValueChange = { pName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pPhone, onValueChange = { pPhone = it }, label = { Text(text = "Phone") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = pEmail, onValueChange = { pEmail = it }, label = { Text(text = "Email (Required)") }, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = { if(pName.length > 2 && pEmail.contains("@")){ 
                 prefs.edit().putString("n", pName).putString("p", pPhone).putString("e", pEmail).apply()
                 isAuth = true 
-            } }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text(text = "ENTER") }
+            } }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "ENTER") }
         }
     } else {
         Scaffold(
@@ -125,17 +124,20 @@ fun PassengerApp() {
                 if (currentTab == "BOOK") {
                     BookingHub(
                         name = pName, phone = pPhone, email = pEmail,
-                        isSearching = isSearching, status = rideStatus, price = ridePrice, driver = driverName, dPh = dPhone, rideId = activeRideId,
-                        step = step, pPt = pickupPt, dPt = destPt, dist = roadDistance, tier = selectedTier, hrs = hrCount,
-                        onSearch = { isSearching = it }, onStatus = { rideStatus = it }, onPrice = { ridePrice = it }, onDriver = { driverName = it }, onDPh = { dPhone = it }, onId = { activeRideId = it },
-                        onStep = { step = it }, onPickup = { pickupPt = it }, onDest = { destPt = it }, onDist = { roadDistance = it }, onTier = { selectedTier = it }, onHr = { hrCount = it }
+                        isSearching = isSearching, status = rideStatus, price = ridePrice, 
+                        driver = driverName, dPh = dPhone, rideId = activeRideId,
+                        step = step, pPt = pickupPt, dPt = destPt, dist = roadDistance, 
+                        tier = selectedTier, hrs = hrCount, pay = paymentMethod,
+                        onSearch = { isSearching = it }, onStatus = { rideStatus = it }, 
+                        onPrice = { ridePrice = it }, onDriver = { driverName = it }, 
+                        onDPhone = { dPhone = it }, onId = { activeRideId = it },
+                        onStep = { step = it }, onPickup = { pickupPt = it }, 
+                        onDest = { destPt = it }, onDist = { roadDistance = it }, 
+                        onTier = { selectedTier = it }, onHr = { hrCount = it },
+                        onPayMethod = { paymentMethod = it }
                     )
                 } else {
-                    Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "ACCOUNT", fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(text = pName)
-                        Text(text = pEmail, color = Color.Gray)
-                        Spacer(modifier = Modifier.weight(1f)); Button({ prefs.edit().clear().apply(); isAuth = false; isSearching = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "LOGOUT") }
-                    }
+                    AccountView(name = pName, phone = pPhone, email = pEmail) { prefs.edit().clear().apply(); isAuth = false; isSearching = false; rideStatus = "IDLE" }
                 }
             }
         }
@@ -146,14 +148,17 @@ fun PassengerApp() {
 fun BookingHub(
     name: String, phone: String, email: String, 
     isSearching: Boolean, status: String, price: String, driver: String?, dPh: String?, rideId: String,
-    step: String, pPt: GeoPoint?, dPt: GeoPoint?, dist: Double, tier: ServiceTier, hrs: Int,
-    onSearch: (Boolean) -> Unit, onStatus: (String) -> Unit, onPrice: (String) -> Unit, onDriver: (String?) -> Unit, onDPh: (String?) -> Unit, onId: (String) -> Unit,
-    onStep: (String) -> Unit, onPickup: (GeoPoint?) -> Unit, onDest: (GeoPoint?) -> Unit, onDist: (Double) -> Unit, onTier: (ServiceTier) -> Unit, onHr: (Int) -> Unit
+    step: String, pPt: GeoPoint?, dPt: GeoPoint?, dist: Double, tier: ServiceTier, hrs: Int, pay: String,
+    onSearch: (Boolean) -> Unit, onStatus: (String) -> Unit, onPrice: (String) -> Unit, 
+    onDriver: (String?) -> Unit, onDPhone: (String?) -> Unit, onId: (String) -> Unit,
+    onStep: (String) -> Unit, onPickup: (GeoPoint?) -> Unit, onDest: (GeoPoint?) -> Unit, 
+    onDist: (Double) -> Unit, onTier: (ServiceTier) -> Unit, onHr: (Int) -> Unit,
+    onPayMethod: (String) -> Unit
 ) {
     val context = LocalContext.current
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var routePoints = remember { mutableStateListOf<GeoPoint>() }
-    var isGeneratingLink by remember { mutableStateOf(false) }
+    var isGenerating by remember { mutableStateOf(false) }
 
     val isNight = Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it >= 20 || it < 6 }
     val fare = if (tier.isHr) (tier.base * 1.15).toInt() else (tier.base + (dist * tier.kmRate) + tier.extra + (if(isNight) 200 else 0)).toInt()
@@ -164,62 +169,68 @@ fun BookingHub(
         } })
 
         if (isSearching || status == "COMPLETED") {
-            Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+            Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 if (status == "COMPLETED") {
-                    Text("TRIP FINISHED", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
-                    Text("$price ETB", fontSize = 48.sp, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.height(30.dp))
-                    if(isGeneratingLink) CircularProgressIndicator(color = Color(0xFF5E4E92))
-                    else Button(onClick = { 
-                        isGeneratingLink = true
-                        thread { try {
-                            val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
-                            val conn = url.openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"; conn.doOutput = true; conn.setRequestProperty("Content-Type", "application/json")
-                            val body = JSONObject().put("amount", price).put("name", name).put("phone", phone).put("email", email).put("rideId", rideId).toString()
-                            conn.outputStream.write(body.toByteArray())
-                            val chapaUrl = JSONObject(conn.inputStream.bufferedReader().readText()).getString("checkout_url")
-                            isGeneratingLink = false
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(chapaUrl)))
-                            onStatus("IDLE"); onSearch(false)
-                        } catch (e: Exception) { isGeneratingLink = false; context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chapa.co"))) } }
-                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("PAY WITH CHAPA") }
-                    TextButton({ onStatus("IDLE"); onSearch(false) }) { Text("PAID WITH CASH") }
+                    Text(text = "ARRIVED", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                    Text(text = "$price ETB", fontSize = 48.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(30.dp))
+                    if (pay == "CHAPA") {
+                        if(isGenerating) CircularProgressIndicator(color = Color(0xFF5E4E92))
+                        else Button(onClick = { 
+                            isGenerating = true
+                            thread { try {
+                                val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
+                                val conn = url.openConnection() as HttpURLConnection
+                                conn.requestMethod = "POST"; conn.doOutput = true; conn.setRequestProperty("Content-Type", "application/json")
+                                val body = JSONObject().put("amount", price).put("name", name).put("phone", phone).put("email", email).put("rideId", rideId).toString()
+                                conn.outputStream.write(body.toByteArray())
+                                val chapaUrl = JSONObject(conn.inputStream.bufferedReader().readText()).getString("checkout_url")
+                                isGenerating = false
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(chapaUrl)))
+                                onStatus("IDLE"); onSearch(false)
+                            } catch (e: Exception) { isGenerating = false } }
+                        }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "PAY WITH CHAPA") }
+                    } else {
+                        Text(text = "PLEASE PAY IN CASH", fontWeight = FontWeight.Bold)
+                        Button(onClick = { onStatus("IDLE"); onSearch(false) }, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) { Text(text = "DONE") }
+                    }
                 } else {
-                    CircularProgressIndicator(color = Color(0xFF5E4E92)); Spacer(Modifier.height(20.dp))
-                    Text(if(driver != null) "$driver IS COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
-                    if(dPh != null) Button({ context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPh"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("📞 CALL") }
-                    Button({ onSearch(false) }, modifier = Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
+                    CircularProgressIndicator(color = Color(0xFF5E4E92))
+                    Spacer(modifier = Modifier.height(20.dp)); Text(text = if(driver != null) "$driver COMING" else "SEARCHING...", fontWeight = FontWeight.Bold)
+                    if(dPh != null) Button(onClick = { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPh"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text(text = "📞 CALL") }
+                    Button(onClick = { onSearch(false) }, modifier = Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "CANCEL") }
                 }
             }
         } else {
-            if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { Text(if(step=="PICKUP") "📍" else "🏁", fontSize = 40.sp, Modifier.padding(bottom = 40.dp)) }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
+            if(step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), Alignment.Center) { Text(text = if(step=="PICKUP") "📍" else "🏁", fontSize = 40.sp, modifier = Modifier.padding(bottom = 40.dp)) }
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(ServiceTier.values()) { t ->
-                        Surface(Modifier.clickable { onTier(t); if(t.isHr) onStep("CONFIRM") else onStep("PICKUP") }, color = if(tier == t) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
-                            Text(t.label, Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold)
+                        Surface(modifier = Modifier.clickable { onTier(t); if(t.isHr) onStep("CONFIRM") else onStep("PICKUP") }, color = if(tier == t) Color(0xFF4CAF50) else Color(0xFFF0F0F0), shape = RoundedCornerShape(12.dp)) {
+                            Text(text = t.label, modifier = Modifier.padding(14.dp, 10.dp), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
-                if (step == "PICKUP") Button({ onPickup(mapViewRef?.mapCenter as GeoPoint); onStep(if(tier.isHr) "CONFIRM" else "DEST") }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("SET PICKUP") }
-                else if (step == "DEST") Button({ 
+                Spacer(modifier = Modifier.height(16.dp))
+                if (step == "PICKUP") Button(onClick = { onPickup(mapViewRef?.mapCenter as GeoPoint); onStep(if(tier.isHr) "CONFIRM" else "DEST") }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text(text = "SET PICKUP") }
+                else if (step == "DEST") Button(onClick = { 
                     val end = mapViewRef?.mapCenter as GeoPoint; onDest(end)
                     thread { try {
                         val json = JSONObject(URL("https://router.project-osrm.org/route/v1/driving/${pPt!!.longitude},${pPt!!.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson").readText())
                         val r = json.getJSONArray("routes").getJSONObject(0)
                         onDist(r.getDouble("distance") / 1000.0); onStep("CONFIRM")
                     } catch (e: Exception) {} }
-                }, Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION") }
+                }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION") }
                 else {
-                    Text("$fare ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.Red)
-                    Button({
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column { Text(text = "$fare ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.Red) }
+                        Row { listOf("CASH", "CHAPA").forEach { m -> Surface(modifier = Modifier.clickable { onPayMethod(m) }.padding(4.dp), color = if(pay == m) Color(0xFF5E4E92) else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) { Text(text = m, modifier = Modifier.padding(6.dp), fontSize = 10.sp, color = if(pay==m) Color.White else Color.Black) } } }
+                    }
+                    Button(onClick = {
                         val id = "R_${System.currentTimeMillis()}"
                         onId(id); onPrice(fare.toString()); onSearch(true)
-                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email, "status" to "REQUESTED", "price" to fare.toString(), "tier" to tier.label, "pLat" to pPt?.latitude, "pLon" to pPt?.longitude, "dLat" to dPt?.latitude, "dLon" to dPt?.longitude))
-                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("BOOK NOW") }
-                    TextButton({ onStep("PICKUP"); onPickup(null); onDest(null); onDist(0.0) }, Modifier.fillMaxWidth()) { Text("RESET MAP") }
+                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email, "status" to "REQUESTED", "price" to fare.toString(), "tier" to tier.label, "pLat" to pPt?.latitude, "pLon" to pPt?.longitude, "dLat" to dPt?.latitude, "dLon" to dPt?.longitude, "pay" to pay))
+                    }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text(text = "BOOK NOW") }
                 }
             }
         }
@@ -227,10 +238,10 @@ fun BookingHub(
 }
 
 @Composable
-fun AccountView(name: String, phone: String, onLogout: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("ACCOUNT", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text(name, fontWeight = FontWeight.Bold); Text(phone, color = Color.Gray)
-        Spacer(Modifier.weight(1f)); Button(onLogout, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("LOGOUT") }
+fun AccountView(name: String, phone: String, email: String, onLogout: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = "ACCOUNT", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(text = name, fontWeight = FontWeight.Bold); Text(text = phone); Text(text = email, color = Color.Gray)
+        Spacer(modifier = Modifier.weight(1f)); Button(onClick = onLogout, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "LOGOUT") }
     }
 }
