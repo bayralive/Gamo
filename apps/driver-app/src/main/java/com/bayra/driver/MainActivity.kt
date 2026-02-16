@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,7 +37,8 @@ data class RideJob(
 
 class MainActivity : ComponentActivity() {
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { 
-        startForegroundService(Intent(this, BeaconService::class.java))
+        val beaconIntent = Intent(this, BeaconService::class.java)
+        try { startForegroundService(beaconIntent) } catch(e: Exception) {}
     }
 
     override fun onCreate(s: Bundle?) {
@@ -53,11 +55,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverApp() {
     val ctx = LocalContext.current as MainActivity
     val prefs = ctx.getSharedPreferences("bayra_d_vFINAL", Context.MODE_PRIVATE)
-    
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
@@ -78,12 +80,12 @@ fun DriverApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity, onLogout: () -> Unit) {
     val ref = FirebaseDatabase.getInstance().getReference("rides")
     var availableJobs by remember { mutableStateOf<List<RideJob>>(listOf()) }
     var activeJob by remember { mutableStateOf<RideJob?>(null) }
-    var mapRef by remember { mutableStateOf<MapView?>(null) }
 
     LaunchedEffect(Unit) {
         ref.addValueEventListener(object : ValueEventListener {
@@ -107,15 +109,13 @@ fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity, on
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx -> MapView(ctx).apply { 
-                setTileSource(TileSourceFactory.MAPNIK) // Standard high-contrast map for drivers
+                setTileSource(TileSourceFactory.MAPNIK)
                 controller.setZoom(15.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                mapRef = this
             } },
             update = { view ->
                 view.overlays.clear()
                 activeJob?.let { job ->
                     Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "Pickup" }.also { view.overlays.add(it) }
-                    if (job.status == "ON_TRIP") Marker(view).apply { position = GeoPoint(job.dLat, job.dLon); title = "Drop-off" }.also { view.overlays.add(it) }
                 } ?: availableJobs.forEach { job ->
                     Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "${job.price} ETB" }.also { view.overlays.add(it) }
                 }
@@ -125,28 +125,26 @@ fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity, on
 
         Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
             if (activeJob != null) {
+                val jobStatus = activeJob!!.status
+                val isOnTrip = jobStatus == "ON_TRIP"
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(10.dp)) {
                     Column(Modifier.padding(24.dp)) {
-                        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                            Text(activeJob!!.tier, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
-                            Text("ID: ${activeJob!!.id.takeLast(4)}")
-                        }
+                        Text(activeJob!!.tier, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
                         Text("${activeJob!!.price} ETB", fontSize = 40.sp, fontWeight = FontWeight.Black)
                         Text("Passenger: ${activeJob!!.pName}")
                         
                         Spacer(Modifier.height(16.dp))
                         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
-                            val isOnTrip = activeJob!!.status == "ON_TRIP"
                             Button(onClick = { activity.launchNav(if(isOnTrip) activeJob!!.dLat else activeJob!!.pLat, if(isOnTrip) activeJob!!.dLon else activeJob!!.pLon) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) {
                                 Text(if(isOnTrip) "NAV DROP" else "NAV PICKUP")
                             }
-                            Button(onClick = { activity.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeJob!!.pPhone}"))) }, Modifier.background(Color.Black, CircleShape).size(50.dp)) {
+                            IconButton(onClick = { activity.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeJob!!.pPhone}"))) }, Modifier.background(Color.Black, CircleShape)) {
                                 Text("📞", color = Color.White)
                             }
                         }
                         
                         Spacer(Modifier.height(12.dp))
-                        val nextStatus = when(activeJob!!.status) {
+                        val nextStatus = when(jobStatus) {
                             "ACCEPTED" -> "ARRIVED"
                             "ARRIVED" -> "ON_TRIP"
                             else -> "COMPLETED"
@@ -156,11 +154,11 @@ fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity, on
                             modifier = Modifier.fillMaxWidth().height(65.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = if(isOnTrip) Color.Red else Color(0xFF5E4E92))
                         ) {
-                            Text(when(activeJob!!.status) {
+                            Text(when(jobStatus) {
                                 "ACCEPTED" -> "I HAVE ARRIVED"
                                 "ARRIVED" -> "START TRIP"
-                                else -> "FINISH TRIP (COLLECT CASH)"
-                            }, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                else -> "FINISH TRIP"
+                            }, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -171,13 +169,13 @@ fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity, on
                         TextButton(onLogout) { Text("LOGOUT", color = Color.Red) }
                     }
                 }
-                LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                LazyColumn(Modifier.heightIn(max = 250.dp)) {
                     items(availableJobs) { job ->
                         Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                 Column {
                                     Text(job.pName, fontWeight = FontWeight.Bold)
-                                    Text("${job.price} ETB • ${job.tier}", color = Color(0xFF5E4E92), fontWeight = FontWeight.Bold)
+                                    Text("${job.price} ETB", color = Color(0xFF5E4E92), fontWeight = FontWeight.Bold)
                                 }
                                 Button(onClick = { 
                                     ref.child(job.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName, "dPhone" to driverPhone)) 
