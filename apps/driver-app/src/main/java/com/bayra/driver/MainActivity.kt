@@ -54,11 +54,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v126", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v127", Context.MODE_PRIVATE) }
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
@@ -92,6 +93,8 @@ fun DriverAppRoot() {
     }
 }
 
+// 🔥 ADDED OPT-IN HERE TO SILENCE THE CARD API WARNING
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadarHub(driverName: String, driverPhone: String, activity: MainActivity?, onLogout: () -> Unit) {
     val ref = FirebaseDatabase.getInstance().getReference("rides")
