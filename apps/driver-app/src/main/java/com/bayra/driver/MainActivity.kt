@@ -1,5 +1,6 @@
 package com.bayra.driver
 
+import android.content.Context // 🛡️ THE MISSING WELD
 import android.os.Bundle
 import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
@@ -24,7 +25,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
-data class Ride(val id: String = "", val pName: String = "", val price: String = "0", val status: String = "")
+data class Ride(val id: String = "", val pName: String = "", val price: String = "0", val tier: String = "", val status: String = "")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,19 +43,23 @@ fun DriverEngine() {
     var isAuth by remember { mutableStateOf(name.isNotEmpty()) }
 
     if (!isAuth) {
-        Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
-            Spacer(Modifier.height(20.dp))
-            OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-            Button({ if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E4E92))) { Text("LOGIN") }
+        Column(
+            modifier = Modifier.fillMaxSize().padding(32.dp), 
+            verticalArrangement = Arrangement.Center, 
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF5E4E92))
+            Spacer(modifier = Modifier.height(30.dp))
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { if(name.isNotEmpty()){ prefs.edit().putString("n", name).apply(); isAuth = true } }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("LOGIN") }
         }
     } else {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Text("RADAR: $name", fontWeight = FontWeight.Bold)
-                TextButton({ prefs.edit().clear().apply(); isAuth = false }) { Text("LOGOUT", color = Color.Red) }
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "RADAR: $name", fontWeight = FontWeight.Bold)
+                TextButton(onClick = { prefs.edit().clear().apply(); isAuth = false }) { Text(text = "LOGOUT", color = Color.Red) }
             }
-            Spacer(Modifier.height(16.dp)); RadarView(name)
+            Spacer(modifier = Modifier.height(16.dp)); RadarView(name)
         }
     }
 }
@@ -63,7 +68,7 @@ fun DriverEngine() {
 fun RadarView(dName: String) {
     val ref = FirebaseDatabase.getInstance().getReference("rides")
     var rides by remember { mutableStateOf(listOf<Ride>()) }
-    var activeRide by remember { mutableStateOf<Ride?>(null) }
+    var activeJob by remember { mutableStateOf<Ride?>(null) }
 
     LaunchedEffect(Unit) {
         ref.addValueEventListener(object : ValueEventListener {
@@ -71,33 +76,35 @@ fun RadarView(dName: String) {
                 val list = mutableListOf<Ride>()
                 var current: Ride? = null
                 s.children.forEach {
-                    val status = it.child("status").getValue(String::class.java) ?: ""
-                    val ride = Ride(it.child("id").getValue(String::class.java) ?: "", it.child("pName").getValue(String::class.java) ?: "User", it.child("price").value?.toString() ?: "0", status)
-                    if (status == "REQUESTED") list.add(ride)
-                    else if (it.child("driverName").getValue(String::class.java) == dName && status != "COMPLETED") current = ride
+                    val st = it.child("status").getValue(String::class.java) ?: ""
+                    val r = Ride(id = it.child("id").getValue(String::class.java) ?: "", pName = it.child("pName").getValue(String::class.java) ?: "User", price = it.child("price").value?.toString() ?: "0", tier = it.child("tier").getValue(String::class.java) ?: "", status = st)
+                    if (st == "REQUESTED") list.add(r)
+                    else if (st != "COMPLETED" && it.child("driverName").getValue(String::class.java) == dName) current = r
                 }
-                rides = list; activeRide = current
+                rides = list; activeJob = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
     }
 
-    if (activeRide != null) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("ACTIVE: ${activeRide!!.pName}", fontWeight = FontWeight.Bold)
-                Text("${activeRide!!.price} ETB", fontSize = 32.sp, color = Color.Red, fontWeight = FontWeight.Black)
-                Button({ ref.child(activeRide!!.id).child("status").setValue("COMPLETED") }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("FINISH TRIP") }
+    if (activeJob != null) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "ACTIVE: ${activeJob!!.pName}", fontWeight = FontWeight.Bold)
+                Text(text = "${activeJob!!.price} ETB", fontSize = 48.sp, color = Color.Red, fontWeight = FontWeight.Black)
+                Button(onClick = { ref.child(activeJob!!.id).child("status").setValue("COMPLETED") }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "FINISH TRIP") }
             }
         }
     } else {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(rides) { ride ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(ride.pName, fontWeight = FontWeight.Bold)
-                        Text("${ride.price} ETB", color = Color.Red, fontWeight = FontWeight.Black)
-                        Button({ ref.child(ride.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }, Modifier.fillMaxWidth()) { Text("ACCEPT") }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "Passenger: ${ride.pName}", fontWeight = FontWeight.Bold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = ride.tier); Text(text = "${ride.price} ETB", color = Color.Red, fontWeight = FontWeight.Black)
+                        }
+                        Button(onClick = { ref.child(ride.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }, modifier = Modifier.fillMaxWidth()) { Text(text = "ACCEPT") }
                     }
                 }
             }
