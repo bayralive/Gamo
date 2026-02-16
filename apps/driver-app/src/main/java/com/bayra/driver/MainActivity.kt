@@ -3,6 +3,7 @@ package com.bayra.driver
 import android.Manifest
 import android.content.*
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
@@ -77,7 +78,6 @@ fun DriverAppRoot() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // SAFE IMAGE LOOKUP
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
             if (logoId != 0) {
                 Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(200.dp))
@@ -102,7 +102,11 @@ fun DriverAppRoot() {
         LaunchedEffect(Unit) {
             try { 
                 val intent = Intent(ctx, BeaconService::class.java)
-                if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
+                if (Build.VERSION.SDK_INT >= 26) {
+                    ctx.startForegroundService(intent)
+                } else {
+                    ctx.startService(intent)
+                }
             } catch (e: Exception) {}
         }
         RadarHub(dName, dPhone) { 
