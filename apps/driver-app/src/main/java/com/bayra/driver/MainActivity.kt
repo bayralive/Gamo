@@ -7,7 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
-import android.util.Log // 🔥 ADDED MISSING IMPORT
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.firebase.database.*
+import kotlinx.coroutines.delay
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -46,8 +47,8 @@ data class RideJob(
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
-    override fun onCreate(s: Bundle?) {
-        super.onCreate(s)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         setContent { MaterialTheme { DriverAppRoot() } }
     }
@@ -62,25 +63,21 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v131", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v132", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
 
     // PERMISSION LAUNCHER
-    val requestPermissionsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-        val grantedLoc = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        val grantedNotif = permissions[Manifest.permission.POST_NOTIFICATIONS] == true
-        
-        if (grantedLoc && grantedNotif) {
+    val requestLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
+        if (perms[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             if (dName.length > 1) {
                 prefs.edit().putString("n", dName).putString("p", dPhone).apply()
                 isAuth = true
-                Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
             }
         } else {
-            Toast.makeText(ctx, "Location and notification permissions are required.", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Permission Denied. Radar cannot start.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -91,9 +88,8 @@ fun DriverAppRoot() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-            if (logoId != 0) {
-                Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(200.dp))
-            }
+            if (logoId != 0) Image(painter = painterResource(id = logoId), null, modifier = Modifier.size(200.dp))
+            
             Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(modifier = Modifier.height(30.dp))
             OutlinedTextField(value = dName, onValueChange = { dName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
@@ -102,39 +98,34 @@ fun DriverAppRoot() {
             Button(
                 onClick = { 
                     val hasLoc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                    val hasNotif = ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-
-                    if (hasLoc && hasNotif) {
+                    if (hasLoc) {
                         if (dName.length > 1) {
                             prefs.edit().putString("n", dName).putString("p", dPhone).apply()
                             isAuth = true
-                            Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        requestPermissionsLauncher.launch(arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.POST_NOTIFICATIONS
-                        ))
+                        requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(60.dp)
             ) { Text(text = "ACTIVATE RADAR", fontWeight = FontWeight.Bold) }
         }
     } else {
-        LaunchedEffect(Unit) {
-            try { 
-                val intent = Intent(ctx, BeaconService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent) else ctx.startService(intent)
-            } catch (e: Exception) {
-                Log.e("DriverAppRoot", "Service start failed: ${e.message}") // 🔥 NOW VALID
-                prefs.edit().clear().apply()
-                isAuth = false
-                Toast.makeText(ctx, "Service Error: ${e.message}", Toast.LENGTH_LONG).show()
+        // 🔥 THE ABSOLUTE SHIELD: Wrapped and Delayed Service Startup
+        LaunchedEffect(isAuth) {
+            if(isAuth) {
+                delay(800) // Ensure the permission dialog is fully gone
+                runCatching {
+                    val intent = Intent(ctx, BeaconService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent) else ctx.startService(intent)
+                }.onFailure { e ->
+                    Log.e("Bayra", "Service start blocked by OS: ${e.message}")
+                }
             }
         }
         RadarHub(dName, dPhone) { 
             prefs.edit().clear().apply()
-            try { ctx.stopService(Intent(ctx, BeaconService::class.java)) } catch(e: Exception){}
+            runCatching { ctx.stopService(Intent(ctx, BeaconService::class.java)) }
             isAuth = false 
         }
     }
@@ -168,7 +159,7 @@ fun RadarHub(driverName: String, driverPhone: String, onLogout: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { context -> MapView(context).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } },
+            factory = { c -> MapView(c).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } },
             update = { view ->
                 view.overlays.clear()
                 activeJob?.let { job -> Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "Pickup" }.also { view.overlays.add(it) } }
