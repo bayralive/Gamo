@@ -1,21 +1,28 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("com.google.gms.google-services") }
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
+}
 android {
-    namespace = "com.bayra.customer"; compileSdk = 34
+    namespace = "com.bayra.customer"
+    compileSdk = 34
     defaultConfig {
-        applicationId = "com.bayra.customer"; minSdk = 24; targetSdk = 34
-        versionCode = 115; versionName = "1.1.5-Sovereign"; multiDexEnabled = true
+        applicationId = "com.bayra.customer"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
-    kotlinOptions { jvmTarget = "1.8" }
+    kotlinOptions { jvmTarget = "11" }
 }
 dependencies {
-    implementation("org.osmdroid:osmdroid-android:6.1.18")
-    implementation("com.google.android.gms:play-services-location:21.0.1")
-    implementation(platform("androidx.compose:compose-bom:2023.06.01"))
+    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.activity:activity-compose:1.7.0")
+    implementation(platform("androidx.compose:compose-bom:2023.01.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.activity:activity-compose:1.7.2")
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
-    implementation("com.google.firebase:firebase-database-ktx")
+    implementation("com.google.firebase:firebase-database-ktx:20.2.2")
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
