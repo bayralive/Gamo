@@ -12,7 +12,8 @@
 
     <application
         android:label="Bayra Driver"
-        android:icon="@android:drawable/ic_menu_mylocation"
+        android:icon="@drawable/logo_driver"
+        android:roundIcon="@drawable/logo_driver"
         android:theme="@style/Theme.Material3.DayNight">
         
         <service 
