@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.util.Log // 🔥 ADDED MISSING IMPORT
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,26 +62,25 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v130", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v131", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
 
-    // 🔥 PERMISSION LAUNCHER FOR INTERACTIVE REQUESTS
+    // PERMISSION LAUNCHER
     val requestPermissionsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         val grantedLoc = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         val grantedNotif = permissions[Manifest.permission.POST_NOTIFICATIONS] == true
         
         if (grantedLoc && grantedNotif) {
-            // Permissions are now confirmed, proceed to login
             if (dName.length > 1) {
                 prefs.edit().putString("n", dName).putString("p", dPhone).apply()
                 isAuth = true
                 Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
             }
         } else {
-            Toast.makeText(ctx, "Location and notification permissions are required to activate radar.", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Location and notification permissions are required.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -105,14 +105,12 @@ fun DriverAppRoot() {
                     val hasNotif = ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
                     if (hasLoc && hasNotif) {
-                        // Already has permissions, proceed directly
                         if (dName.length > 1) {
                             prefs.edit().putString("n", dName).putString("p", dPhone).apply()
                             isAuth = true
                             Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        // Request permissions
                         requestPermissionsLauncher.launch(arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
                             Manifest.permission.POST_NOTIFICATIONS
@@ -123,16 +121,15 @@ fun DriverAppRoot() {
             ) { Text(text = "ACTIVATE RADAR", fontWeight = FontWeight.Bold) }
         }
     } else {
-        // 🔥 Service now starts only AFTER successful auth AND permission check.
-        LaunchedEffect(Unit) { // Runs once when this block becomes active
+        LaunchedEffect(Unit) {
             try { 
                 val intent = Intent(ctx, BeaconService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent) else ctx.startService(intent)
             } catch (e: Exception) {
-                Toast.makeText(ctx, "Failed to start radar service: ${e.message}", Toast.LENGTH_LONG).show()
-                Log.e("DriverAppRoot", "Service start failed: ${e.message}")
-                prefs.edit().clear().apply() // Force re-login if service fails unexpectedly
+                Log.e("DriverAppRoot", "Service start failed: ${e.message}") // 🔥 NOW VALID
+                prefs.edit().clear().apply()
                 isAuth = false
+                Toast.makeText(ctx, "Service Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
         RadarHub(dName, dPhone) { 
