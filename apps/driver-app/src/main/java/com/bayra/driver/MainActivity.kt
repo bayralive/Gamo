@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v133", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v135", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -82,10 +82,11 @@ fun DriverAppRoot() {
     if (!isAuth) {
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-            if (logoId != 0) Image(painter = painterResource(id = logoId), null, modifier = Modifier.size(220.dp))
+            if (logoId != 0) Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(220.dp))
             Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(modifier = Modifier.height(30.dp))
             OutlinedTextField(value = dName, onValueChange = { dName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
@@ -96,49 +97,40 @@ fun DriverAppRoot() {
             ) { Text(text = "LOGIN TO SYSTEM") }
         }
     } else {
-        Box(Modifier.fillMaxSize()) {
-            RadarHub(dName, dPhone, isRadarOn, onToggleRadar = { newState ->
-                if (newState) {
-                    runCatching {
-                        val intent = Intent(ctx, BeaconService::class.java)
-                        if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
-                        isRadarOn = true
-                    }
-                } else {
-                    ctx.stopService(Intent(ctx, BeaconService::class.java))
-                    isRadarOn = false
-                }
-            }) { 
+        Box(modifier = Modifier.fillMaxSize()) {
+            RadarHub(dName, dPhone, isRadarOn) { 
                 prefs.edit().clear().apply()
                 ctx.stopService(Intent(ctx, BeaconService::class.java))
                 isAuth = false 
             }
 
-            // 🔥 FLOATING RADAR SWITCH (The Crash Stopper)
             if (!isRadarOn) {
                 Surface(
-                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)),
-                    color = Color.Transparent
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color.Black.copy(alpha = 0.7f)
                 ) {
-                    Column(Arrangement.Center, Alignment.CenterHorizontally) {
+                    Column(
+                        verticalArrangement = Arrangement.Center, // 🔥 FIXED SIGNATURE
+                        horizontalAlignment = Alignment.CenterHorizontally // 🔥 FIXED SIGNATURE
+                    ) {
                         Button(
                             onClick = { 
                                 runCatching {
                                     val intent = Intent(ctx, BeaconService::class.java)
                                     if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
                                     isRadarOn = true
-                                }.onFailure { Toast.makeText(ctx, "Wait 1 second and try again", Toast.LENGTH_SHORT).show() }
+                                }.onFailure { Toast.makeText(ctx, "Wait a moment and try again", Toast.LENGTH_SHORT).show() }
                             },
-                            Modifier.size(150.dp),
+                            modifier = Modifier.size(150.dp),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.PowerSettingsNew, null, Modifier.size(40.dp))
-                                Text("ACTIVATE")
+                                Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(40.dp))
+                                Text(text = "ACTIVATE")
                             }
                         }
-                        Text("Touch to become visible", color = Color.White, modifier = Modifier.padding(top = 10.dp))
+                        Text(text = "Touch to become visible", color = Color.White, modifier = Modifier.padding(top = 10.dp))
                     }
                 }
             }
@@ -148,7 +140,7 @@ fun DriverAppRoot() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onToggleRadar: (Boolean) -> Unit, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
     val ref = FirebaseDatabase.getInstance().getReference("rides")
@@ -185,16 +177,19 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onTogg
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
             if (activeJob != null) {
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                    Column(Modifier.padding(20.dp)) {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                    Column(modifier = Modifier.padding(20.dp)) {
                         Text(text = "${activeJob!!.price} ETB", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.Red)
                         Text(text = "Passenger: ${activeJob!!.pName}")
-                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { activity?.launchNav(if(activeJob!!.status == "ON_TRIP") activeJob!!.dLat else activeJob!!.pLat, if(activeJob!!.status == "ON_TRIP") activeJob!!.dLon else activeJob!!.pLon) }, Modifier.weight(1f)) {
-                                Text("NAVIGATE", fontSize = 11.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp), 
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(onClick = { activity?.launchNav(if(activeJob!!.status == "ON_TRIP") activeJob!!.dLat else activeJob!!.pLat, if(activeJob!!.status == "ON_TRIP") activeJob!!.dLon else activeJob!!.pLon) }, modifier = Modifier.weight(1f)) {
+                                Text(text = "NAVIGATE", fontSize = 11.sp)
                             }
-                            IconButton(onClick = { activity?.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeJob!!.pPhone}"))) }, Modifier.background(Color.Black, CircleShape)) {
-                                Icon(Icons.Default.Call, null, tint = Color.White)
+                            IconButton(onClick = { activity?.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeJob!!.pPhone}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) {
+                                Icon(Icons.Default.Call, contentDescription = null, tint = Color.White)
                             }
                         }
                         val next = when(activeJob!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
@@ -204,18 +199,22 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onTogg
                     }
                 }
             } else {
-                Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
-                    Row(Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
+                    Row(
+                        modifier = Modifier.padding(12.dp), 
+                        horizontalArrangement = Arrangement.SpaceBetween, 
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(text = if(isRadarOn) "RADAR ONLINE" else "RADAR OFFLINE", color = if(isRadarOn) Color.Green else Color.Gray)
                         TextButton(onClick = onLogout) { Text(text = "LOGOUT", color = Color.Red) }
                     }
                 }
                 LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                     items(availableJobs) { job ->
-                        Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) {
-                                Column { Text(job.pName, fontWeight = FontWeight.Bold); Text("${job.price} ETB") }
-                                Button(onClick = { ref.child(job.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName, "dPhone" to driverPhone)) }) { Text("ACCEPT") }
+                        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                            Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column { Text(text = job.pName, fontWeight = FontWeight.Bold); Text(text = "${job.price} ETB") }
+                                Button(onClick = { ref.child(job.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName, "dPhone" to driverPhone)) }) { Text(text = "ACCEPT") }
                             }
                         }
                     }
