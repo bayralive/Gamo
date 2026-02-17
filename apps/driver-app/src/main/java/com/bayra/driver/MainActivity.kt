@@ -2,11 +2,14 @@ package com.bayra.driver
 
 import android.Manifest
 import android.content.*
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -26,6 +29,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.google.firebase.database.*
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -41,24 +45,14 @@ data class RideJob(
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
-    private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ -> }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(s: Bundle?) {
+        super.onCreate(s)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        permLauncher.launch(arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.POST_NOTIFICATIONS
-        ))
         setContent { MaterialTheme { DriverAppRoot() } }
     }
-
     fun launchNav(lat: Double, lon: Double) {
-        val uri = Uri.parse("google.navigation:q=$lat,$lon")
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply { setPackage("com.google.android.apps.maps") }
-        try { startActivity(intent) } catch (e: Exception) {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lon")))
-        }
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$lat,$lon")).apply { setPackage("com.google.android.apps.maps") }) }
+        catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lon"))) }
     }
 }
 
@@ -66,11 +60,29 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v129", Context.MODE_PRIVATE) }
+    val activity = ctx as? MainActivity
+    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v130", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
+
+    // 🔥 PERMISSION LAUNCHER FOR INTERACTIVE REQUESTS
+    val requestPermissionsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        val grantedLoc = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val grantedNotif = permissions[Manifest.permission.POST_NOTIFICATIONS] == true
+        
+        if (grantedLoc && grantedNotif) {
+            // Permissions are now confirmed, proceed to login
+            if (dName.length > 1) {
+                prefs.edit().putString("n", dName).putString("p", dPhone).apply()
+                isAuth = true
+                Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(ctx, "Location and notification permissions are required to activate radar.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     if (!isAuth) {
         Column(
@@ -82,7 +94,6 @@ fun DriverAppRoot() {
             if (logoId != 0) {
                 Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(200.dp))
             }
-            
             Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(modifier = Modifier.height(30.dp))
             OutlinedTextField(value = dName, onValueChange = { dName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
@@ -90,24 +101,39 @@ fun DriverAppRoot() {
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = { 
-                    if (dName.length > 1) {
-                        prefs.edit().putString("n", dName).putString("p", dPhone).apply()
-                        isAuth = true 
+                    val hasLoc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val hasNotif = ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+                    if (hasLoc && hasNotif) {
+                        // Already has permissions, proceed directly
+                        if (dName.length > 1) {
+                            prefs.edit().putString("n", dName).putString("p", dPhone).apply()
+                            isAuth = true
+                            Toast.makeText(ctx, "Radar activated.", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        // Request permissions
+                        requestPermissionsLauncher.launch(arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ))
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(60.dp)
             ) { Text(text = "ACTIVATE RADAR", fontWeight = FontWeight.Bold) }
         }
     } else {
-        LaunchedEffect(Unit) {
+        // 🔥 Service now starts only AFTER successful auth AND permission check.
+        LaunchedEffect(Unit) { // Runs once when this block becomes active
             try { 
                 val intent = Intent(ctx, BeaconService::class.java)
-                if (Build.VERSION.SDK_INT >= 26) {
-                    ctx.startForegroundService(intent)
-                } else {
-                    ctx.startService(intent)
-                }
-            } catch (e: Exception) {}
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent) else ctx.startService(intent)
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "Failed to start radar service: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e("DriverAppRoot", "Service start failed: ${e.message}")
+                prefs.edit().clear().apply() // Force re-login if service fails unexpectedly
+                isAuth = false
+            }
         }
         RadarHub(dName, dPhone) { 
             prefs.edit().clear().apply()
