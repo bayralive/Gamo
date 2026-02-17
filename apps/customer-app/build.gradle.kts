@@ -15,7 +15,14 @@ android {
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
-    kotlinOptions { jvmTarget = "11" }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    kotlinOptions { 
+        jvmTarget = "11" 
+        freeCompilerArgs = freeCompilerArgs + "-P" + "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.8.0"
+    }
 }
 dependencies {
     implementation("androidx.core:core-ktx:1.10.1")

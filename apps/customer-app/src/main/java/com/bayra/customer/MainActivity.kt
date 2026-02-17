@@ -37,10 +37,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v143", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v144", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
 
@@ -58,6 +59,7 @@ fun PassengerApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookingCore(name: String) {
     var step by remember { mutableStateOf("PICKUP") }
