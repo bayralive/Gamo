@@ -1,12 +1,12 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services") // 🔥 THE MISSING LINK FIXED
 }
 
 android {
     namespace = "com.bayra.driver"
     compileSdk = 34
-
     defaultConfig {
         applicationId = "com.bayra.driver"
         minSdk = 24
@@ -15,15 +15,10 @@ android {
         versionName = "1.0"
         vectorDrawables { useSupportLibrary = true }
     }
-
     buildTypes {
         release {
-            isMinifyEnabled = true // 🔥 SHRINKS CODE
-            isShrinkResources = true // 🔥 SHRINKS IMAGES
+            isMinifyEnabled = false // Disabled for now to ensure OSMDroid stability
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-        debug {
-            isMinifyEnabled = false
         }
     }
     compileOptions {

@@ -39,6 +39,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
+// 🔥 HARDENED DATA MODEL
 data class RideJob(
     val id: String = "", val pName: String = "", val pPhone: String = "",
     val price: String = "0", val status: String = "IDLE", val tier: String = "",
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v135", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v136", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -82,11 +83,10 @@ fun DriverAppRoot() {
     if (!isAuth) {
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-            if (logoId != 0) Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(220.dp))
+            if (logoId != 0) Image(painter = painterResource(id = logoId), null, modifier = Modifier.size(200.dp))
             Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(modifier = Modifier.height(30.dp))
             OutlinedTextField(value = dName, onValueChange = { dName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
@@ -94,7 +94,7 @@ fun DriverAppRoot() {
             Button(
                 onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)) },
                 modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 16.dp)
-            ) { Text(text = "LOGIN TO SYSTEM") }
+            ) { Text(text = "LOGIN") }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -105,32 +105,25 @@ fun DriverAppRoot() {
             }
 
             if (!isRadarOn) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Color.Black.copy(alpha = 0.7f)
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.Center, // 🔥 FIXED SIGNATURE
-                        horizontalAlignment = Alignment.CenterHorizontally // 🔥 FIXED SIGNATURE
-                    ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = Color.Black.copy(alpha = 0.7f)) {
+                    Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Button(
                             onClick = { 
                                 runCatching {
                                     val intent = Intent(ctx, BeaconService::class.java)
                                     if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
                                     isRadarOn = true
-                                }.onFailure { Toast.makeText(ctx, "Wait a moment and try again", Toast.LENGTH_SHORT).show() }
+                                }.onFailure { Toast.makeText(ctx, "OS Blocked Service. Try again.", Toast.LENGTH_SHORT).show() }
                             },
                             modifier = Modifier.size(150.dp),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(40.dp))
+                                Icon(Icons.Default.PowerSettingsNew, null, Modifier.size(40.dp))
                                 Text(text = "ACTIVATE")
                             }
                         }
-                        Text(text = "Touch to become visible", color = Color.White, modifier = Modifier.padding(top = 10.dp))
                     }
                 }
             }
@@ -152,10 +145,22 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogo
             override fun onDataChange(s: DataSnapshot) {
                 val list = mutableListOf<RideJob>()
                 var current: RideJob? = null
-                s.children.forEach {
-                    val r = it.getValue(RideJob::class.java) ?: return@forEach
+                s.children.forEach { snap ->
+                    // 🔥 SECURE MANUAL MAPPING TO PREVENT REFLECTION CRASH
+                    val r = RideJob(
+                        id = snap.key ?: "",
+                        pName = snap.child("pName").value?.toString() ?: "User",
+                        pPhone = snap.child("pPhone").value?.toString() ?: "",
+                        price = snap.child("price").value?.toString() ?: "0",
+                        status = snap.child("status").value?.toString() ?: "IDLE",
+                        tier = snap.child("tier").value?.toString() ?: "Standard",
+                        pLat = snap.child("pLat").value?.toString()?.toDoubleOrNull() ?: 0.0,
+                        pLon = snap.child("pLon").value?.toString()?.toDoubleOrNull() ?: 0.0,
+                        dLat = snap.child("dLat").value?.toString()?.toDoubleOrNull() ?: 0.0,
+                        dLon = snap.child("dLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                    )
                     if (r.status == "REQUESTED") list.add(r)
-                    else if (r.status != "COMPLETED" && it.child("driverName").getValue(String::class.java) == driverName) current = r
+                    else if (r.status != "COMPLETED" && snap.child("driverName").value == driverName) current = r
                 }
                 availableJobs = list; activeJob = current
             }
@@ -181,15 +186,12 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogo
                     Column(modifier = Modifier.padding(20.dp)) {
                         Text(text = "${activeJob!!.price} ETB", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.Red)
                         Text(text = "Passenger: ${activeJob!!.pName}")
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp), 
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { activity?.launchNav(if(activeJob!!.status == "ON_TRIP") activeJob!!.dLat else activeJob!!.pLat, if(activeJob!!.status == "ON_TRIP") activeJob!!.dLon else activeJob!!.pLon) }, modifier = Modifier.weight(1f)) {
                                 Text(text = "NAVIGATE", fontSize = 11.sp)
                             }
                             IconButton(onClick = { activity?.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${activeJob!!.pPhone}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) {
-                                Icon(Icons.Default.Call, contentDescription = null, tint = Color.White)
+                                Icon(Icons.Default.Call, null, tint = Color.White)
                             }
                         }
                         val next = when(activeJob!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
@@ -199,12 +201,8 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogo
                     }
                 }
             } else {
-                Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
-                    Row(
-                        modifier = Modifier.padding(12.dp), 
-                        horizontalArrangement = Arrangement.SpaceBetween, 
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
+                    Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = if(isRadarOn) "RADAR ONLINE" else "RADAR OFFLINE", color = if(isRadarOn) Color.Green else Color.Gray)
                         TextButton(onClick = onLogout) { Text(text = "LOGOUT", color = Color.Red) }
                     }
