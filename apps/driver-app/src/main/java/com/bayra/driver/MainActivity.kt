@@ -39,7 +39,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
-// 🔥 THE SOVEREIGN FREQUENCY (Explicit Belgium URL)
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
 data class RideJob(
@@ -75,16 +74,17 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v156", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v160", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
+    var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var isRadarOn by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { perms ->
         if (perms[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
             if (dName.length > 1) {
-                prefs.edit().putString("n", dName).apply()
+                prefs.edit().putString("n", dName).putString("p", dPhone).apply()
                 isAuth = true
             }
         }
@@ -92,7 +92,7 @@ fun DriverAppRoot() {
 
     if (!isAuth) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White),
+            modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
@@ -100,6 +100,7 @@ fun DriverAppRoot() {
             Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(modifier = Modifier.height(30.dp))
             OutlinedTextField(value = dName, onValueChange = { dName = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = dPhone, onValueChange = { dPhone = it }, label = { Text(text = "Phone") }, modifier = Modifier.fillMaxWidth())
             Button(
                 onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)) },
                 modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 16.dp)
@@ -107,7 +108,7 @@ fun DriverAppRoot() {
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
-            RadarHub(dName, isRadarOn) { 
+            RadarHub(dName, dPhone, isRadarOn) { 
                 prefs.edit().clear().apply()
                 ctx.stopService(Intent(ctx, BeaconService::class.java))
                 isAuth = false 
@@ -142,10 +143,9 @@ fun DriverAppRoot() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    // 🔥 FORCING THE BELGIUM NODE
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     var availableJobs by remember { mutableStateOf<List<RideJob>>(listOf()) }
     var activeJob by remember { mutableStateOf<RideJob?>(null) }
@@ -156,23 +156,27 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
                 val list = mutableListOf<RideJob>()
                 var current: RideJob? = null
                 s.children.forEach { snap ->
+                    // 🔥 PRECISION HANDSHAKE: Manual Extraction
                     val status = snap.child("status").value?.toString() ?: "IDLE"
-                    val r = RideJob(
+                    val job = RideJob(
                         id = snap.key ?: "",
                         pName = snap.child("pName").value?.toString() ?: "Passenger",
                         price = snap.child("price").value?.toString() ?: "0",
                         status = status,
-                        pLat = snap.child("pLat").value?.toString()?.toDoubleOrNull() ?: 0.0,
-                        pLon = snap.child("pLon").value?.toString()?.toDoubleOrNull() ?: 0.0,
-                        dLat = snap.child("dLat").value?.toString()?.toDoubleOrNull() ?: 0.0,
-                        dLon = snap.child("dLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                        pLat = snap.child("pLat").value.toString().toDoubleOrNull() ?: 0.0,
+                        pLon = snap.child("pLon").value.toString().toDoubleOrNull() ?: 0.0,
+                        dLat = snap.child("dLat").value.toString().toDoubleOrNull() ?: 0.0,
+                        dLon = snap.child("dLon").value.toString().toDoubleOrNull() ?: 0.0
                     )
-                    if (status == "REQUESTED") list.add(r)
-                    else if (status != "COMPLETED" && snap.child("driverName").value == driverName) {
-                        current = r
+                    
+                    if (status == "REQUESTED") {
+                        list.add(job)
+                    } else if (status != "COMPLETED" && snap.child("driverName").value == driverName) {
+                        current = job
                     }
                 }
-                availableJobs = list; activeJob = current
+                availableJobs = list
+                activeJob = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
@@ -185,7 +189,7 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
             update = { view ->
                 view.overlays.clear()
                 activeJob?.let { job -> Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "Job" }.also { view.overlays.add(it) } }
-                ?: availableJobs.forEach { job -> Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "Request" }.also { view.overlays.add(it) } }
+                ?: availableJobs.forEach { job -> Marker(view).apply { position = GeoPoint(job.pLat, job.pLon); title = "${job.price} ETB" }.also { view.overlays.add(it) } }
                 view.invalidate()
             }
         )
@@ -222,7 +226,13 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
                         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
                             Row(modifier = Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                 Column { Text(job.pName, fontWeight = FontWeight.Bold); Text("${job.price} ETB") }
-                                Button(onClick = { ref.child(job.id).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
+                                Button(onClick = { 
+                                    ref.child(job.id).updateChildren(mapOf(
+                                        "status" to "ACCEPTED", 
+                                        "driverName" to driverName,
+                                        "dPhone" to driverPhone 
+                                    )) 
+                                }) { Text("ACCEPT") }
                             }
                         }
                     }
