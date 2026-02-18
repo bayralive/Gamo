@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v146", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v148", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
 
@@ -55,7 +55,7 @@ fun PassengerApp() {
             Spacer(modifier = Modifier.height(20.dp))
             Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             var nIn by remember { mutableStateOf("") }
-            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text(text = "Full Name") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { if(nIn.isNotEmpty()){ prefs.edit().putString("n", nIn).apply(); pName = nIn; isAuth = true } }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 16.dp)) { Text(text = "START") }
         }
     } else {
@@ -76,6 +76,10 @@ fun BookingCore(name: String) {
         AndroidView(factory = { context -> 
             MapView(context).apply { 
                 setTileSource(TileSourceFactory.MAPNIK)
+                // 🔥 TACTILE CONTROL: Enable pinch and double-tap zoom
+                setMultiTouchControls(true) 
+                // 🔥 HIDDEN BUTTONS: Remove system zoom buttons for "in-hand" feel
+                setBuiltInZoomControls(false)
                 controller.setZoom(17.5)
                 controller.setCenter(GeoPoint(6.0333, 37.5500))
                 mapRef = this 
@@ -86,63 +90,86 @@ fun BookingCore(name: String) {
             Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Color(0xFF1A237E))
-                    Text(text = "FINDING YOUR RIDE...", modifier = Modifier.padding(top = 20.dp))
+                    Text(text = "FINDING YOUR BAYRA...", modifier = Modifier.padding(top = 20.dp), fontWeight = FontWeight.Bold)
                     Button(onClick = { status = "IDLE" }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "CANCEL") }
                 }
             }
         } else {
-            if (step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 44.sp, modifier = Modifier.padding(bottom = 40.dp)) }
-            
-            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
-                // TIER SELECTOR
+            // THE SOVEREIGN PIN
+            if (step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
+            }
+
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
+                // TIER ROW
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(modifier = Modifier.clickable { selectedTier = t; if(t.isHr) step = "CONFIRM" }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
-                            Text(text = t.label, modifier = Modifier.padding(12.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
+                        Surface(
+                            modifier = Modifier.clickable { 
+                                selectedTier = t
+                                // Reset to Pickup step when switching tiers to ensure contrat gets a location
+                                step = "PICKUP" 
+                            }, 
+                            color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), 
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // HOURLY CONTROLS
+                // DURATION CONTROLS (Only in Confirm Step for HR tiers)
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Duration:", fontWeight = FontWeight.Bold)
+                        Text(text = "Contract Time:", fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Text(text = "−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-                            Text(text = "$hrCount HR", modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            Text(text = "$hrCount HR", fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 8.dp))
                             IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Text(text = "+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
+                // WORKFLOW ACTION BUTTON
                 if (step == "PICKUP") {
-                    Button(onClick = { step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = { step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, 
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                    ) { Text(text = "SET PICKUP FOR ${selectedTier.label.uppercase()}", fontWeight = FontWeight.Bold) }
                 } else if (step == "DEST") {
-                    Button(onClick = { step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = { step = "CONFIRM" }, 
+                        modifier = Modifier.fillMaxWidth().height(60.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                    ) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
                 } else {
-                    val baseFare = if(selectedTier.isHr) (selectedTier.base * hrCount) else selectedTier.base
-                    val finalFare = (baseFare * 1.15).toInt()
+                    val baseTotal = if(selectedTier.isHr) (selectedTier.base * hrCount) else selectedTier.base
+                    val finalFare = (baseTotal * 1.15).toInt()
                     
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "$finalFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.Red)
-                        if(!selectedTier.isHr) TextButton(onClick = { step = "PICKUP" }) { Text("Edit Route") }
+                        Text(text = "$finalFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color(0xFFD50000))
+                        TextButton(onClick = { step = "PICKUP" }) { Text("Change Location") }
                     }
                     
-                    Button(onClick = { 
-                        val id = "R_${System.currentTimeMillis()}"
-                        val pt = mapRef?.mapCenter as GeoPoint
-                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf(
-                            "id" to id, "pName" to name, "status" to "REQUESTED", 
-                            "price" to finalFare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, 
-                            "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0
-                        ))
-                        status = "SEARCHING" 
-                    }, modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)), shape = RoundedCornerShape(12.dp)) { 
-                        Text(text = if(selectedTier.isHr) "BOOK CONTRAT" else "BOOK NOW", fontWeight = FontWeight.ExtraBold) 
-                    }
+                    Button(
+                        onClick = { 
+                            val id = "R_${System.currentTimeMillis()}"
+                            val pt = mapRef?.mapCenter as GeoPoint
+                            FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf(
+                                "id" to id, "pName" to name, "status" to "REQUESTED", 
+                                "price" to finalFare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, 
+                                "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0
+                            ))
+                            status = "SEARCHING" 
+                        }, 
+                        modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 10.dp), 
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text(text = if(selectedTier.isHr) "START CONTRAT" else "BOOK RIDE", fontWeight = FontWeight.ExtraBold) }
                 }
             }
         }
