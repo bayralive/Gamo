@@ -24,6 +24,7 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 
 enum class Tier(val label: String, val base: Double, val isHr: Boolean) {
     POOL("Pool", 80.0, false), 
@@ -45,7 +46,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v148", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v149", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
 
@@ -68,23 +69,51 @@ fun PassengerApp() {
 fun BookingCore(name: String) {
     var step by remember { mutableStateOf("PICKUP") }
     var status by remember { mutableStateOf("IDLE") }
-    var mapRef by remember { mutableStateOf<MapView?>(null) }
+    
+    // 🔥 UNIVERSAL POINTS: These persist across tier changes
+    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var destPt by remember { mutableStateOf<GeoPoint?>(null) }
+    
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var hrCount by remember { mutableStateOf(1) }
+    var mapRef by remember { mutableStateOf<MapView?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(factory = { context -> 
-            MapView(context).apply { 
-                setTileSource(TileSourceFactory.MAPNIK)
-                // 🔥 TACTILE CONTROL: Enable pinch and double-tap zoom
-                setMultiTouchControls(true) 
-                // 🔥 HIDDEN BUTTONS: Remove system zoom buttons for "in-hand" feel
-                setBuiltInZoomControls(false)
-                controller.setZoom(17.5)
-                controller.setCenter(GeoPoint(6.0333, 37.5500))
-                mapRef = this 
-            } 
-        })
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context -> 
+                MapView(context).apply { 
+                    setTileSource(TileSourceFactory.MAPNIK)
+                    setMultiTouchControls(true) 
+                    setBuiltInZoomControls(false)
+                    controller.setZoom(17.5)
+                    controller.setCenter(GeoPoint(6.0333, 37.5500))
+                    mapRef = this 
+                } 
+            },
+            update = { view ->
+                view.overlays.clear()
+                // DRAW PERSISTENT PINS
+                pickupPt?.let { pt ->
+                    val m = Marker(view)
+                    m.position = pt
+                    m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    m.title = "Pickup"
+                    view.overlays.add(m)
+                }
+                if (!selectedTier.isHr) {
+                    destPt?.let { pt ->
+                        val m = Marker(view)
+                        m.position = pt
+                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        m.title = "Destination"
+                        m.icon = view.context.getDrawable(android.R.drawable.ic_menu_directions)
+                        view.overlays.add(m)
+                    }
+                }
+                view.invalidate()
+            }
+        )
 
         if (status != "IDLE") {
             Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
@@ -95,9 +124,14 @@ fun BookingCore(name: String) {
                 }
             }
         } else {
-            // THE SOVEREIGN PIN
-            if (step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
+            // CENTER PIN SELECTOR (Visible only when setting points)
+            if (step != "CONFIRM") {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = if(step == "PICKUP") "PICKUP" else "DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha=0.6f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
+                    }
+                }
             }
 
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
@@ -107,8 +141,11 @@ fun BookingCore(name: String) {
                         Surface(
                             modifier = Modifier.clickable { 
                                 selectedTier = t
-                                // Reset to Pickup step when switching tiers to ensure contrat gets a location
-                                step = "PICKUP" 
+                                // Intelligent step jumping: If points are already set, go to confirm
+                                if (t.isHr && pickupPt != null) step = "CONFIRM"
+                                else if (!t.isHr && pickupPt != null && destPt != null) step = "CONFIRM"
+                                else if (pickupPt != null) step = "DEST"
+                                else step = "PICKUP"
                             }, 
                             color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), 
                             shape = RoundedCornerShape(8.dp)
@@ -120,48 +157,53 @@ fun BookingCore(name: String) {
                 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // DURATION CONTROLS (Only in Confirm Step for HR tiers)
+                // DURATION CONTROLS
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Contract Time:", fontWeight = FontWeight.Bold)
+                        Text(text = "Duration:", fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Text(text = "−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                             Text(text = "$hrCount HR", fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(horizontal = 8.dp))
                             IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Text(text = "+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // WORKFLOW ACTION BUTTON
+                // UNIFIED ACTION BUTTON
                 if (step == "PICKUP") {
                     Button(
-                        onClick = { step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, 
+                        onClick = { 
+                            pickupPt = mapRef?.mapCenter as GeoPoint
+                            step = if(selectedTier.isHr) "CONFIRM" else "DEST" 
+                        }, 
                         modifier = Modifier.fillMaxWidth().height(60.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                    ) { Text(text = "SET PICKUP FOR ${selectedTier.label.uppercase()}", fontWeight = FontWeight.Bold) }
+                    ) { Text(text = "SET PICKUP POINT", fontWeight = FontWeight.Bold) }
                 } else if (step == "DEST") {
                     Button(
-                        onClick = { step = "CONFIRM" }, 
+                        onClick = { 
+                            destPt = mapRef?.mapCenter as GeoPoint
+                            step = "CONFIRM" 
+                        }, 
                         modifier = Modifier.fillMaxWidth().height(60.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                    ) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
+                    ) { Text(text = "SET DESTINATION POINT", fontWeight = FontWeight.Bold) }
                 } else {
-                    val baseTotal = if(selectedTier.isHr) (selectedTier.base * hrCount) else selectedTier.base
+                    val baseTotal = if(selectedTier.isHr) (selectedTier.base * hrCount) else (selectedTier.base * 2.5) // Estimate for rides
                     val finalFare = (baseTotal * 1.15).toInt()
                     
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "$finalFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color(0xFFD50000))
-                        TextButton(onClick = { step = "PICKUP" }) { Text("Change Location") }
+                        TextButton(onClick = { pickupPt = null; destPt = null; step = "PICKUP" }) { Text("Reset Points") }
                     }
                     
                     Button(
                         onClick = { 
                             val id = "R_${System.currentTimeMillis()}"
-                            val pt = mapRef?.mapCenter as GeoPoint
                             FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf(
                                 "id" to id, "pName" to name, "status" to "REQUESTED", 
-                                "price" to finalFare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, 
+                                "price" to finalFare.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, 
+                                "dLat" to destPt?.latitude, "dLon" to destPt?.longitude,
                                 "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0
                             ))
                             status = "SEARCHING" 
@@ -169,7 +211,7 @@ fun BookingCore(name: String) {
                         modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 10.dp), 
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text(text = if(selectedTier.isHr) "START CONTRAT" else "BOOK RIDE", fontWeight = FontWeight.ExtraBold) }
+                    ) { Text(text = if(selectedTier.isHr) "CONFIRM CONTRAT" else "CONFIRM RIDE", fontWeight = FontWeight.ExtraBold) }
                 }
             }
         }
