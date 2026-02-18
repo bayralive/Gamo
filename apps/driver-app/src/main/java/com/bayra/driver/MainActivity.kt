@@ -40,9 +40,8 @@ fun RadarHub() {
     val prefs = remember { ctx.getSharedPreferences("d_prefs", Context.MODE_PRIVATE) }
     var dName by remember { mutableStateOf(prefs.getString("n", "") ?: "") }
     
-    // 🔥 THE IMPERIAL LEDGER
-    var debt by remember { mutableStateOf(0) }   // Driver owes Empire (15% of Cash)
-    var credit by remember { mutableStateOf(0) } // Empire owes Driver (85% of Chapa)
+    var debt by remember { mutableStateOf(0) }
+    var credit by remember { mutableStateOf(0) }
     
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(dName)
@@ -66,12 +65,12 @@ fun RadarHub() {
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 val list = mutableListOf<DataSnapshot>()
-                var current: DataSnapshot? = null
+                var current: Ride? = null
                 s.children.forEach { 
                     if(it.child("status").value == "REQUESTED") list.add(it)
-                    else if(it.child("status").value != "COMPLETED" && it.child("driverName").value == dName) current = it
+                    else if(it.child("status").value != "COMPLETED" && it.child("driverName").value == dName) activeJob = it
                 }
-                jobs = list; activeJob = current
+                jobs = list
             }
             override fun onCancelled(e: DatabaseError) {}
         })
@@ -81,55 +80,62 @@ fun RadarHub() {
         AndroidView(factory = { context -> MapView(context).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } })
         
         Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-            // 🔥 THE DUAL LEDGER HUD
+            // HUD
             Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(16.dp), color = Color.Black) {
                 Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text("OWED TO YOU", color = Color.Gray, fontSize = 10.sp)
-                        Text("$credit ETB", color = Color.Cyan, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Column {
+                        Text("CREDIT (85%)", color = Color.Gray, fontSize = 10.sp)
+                        Text("$credit ETB", color = Color.Cyan, fontWeight = FontWeight.Bold)
                     }
-                    Divider(Modifier.height(40.dp).width(1.dp), color = Color.DarkGray)
-                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                        Text("OWED TO EMPIRE", color = Color.Gray, fontSize = 10.sp)
-                        Text("$debt ETB", color = Color.Red, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("DEBT (15%)", color = Color.Gray, fontSize = 10.sp)
+                        Text("$debt ETB", color = Color.Red, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            if (activeJob != null) {
+            val netDebt = debt - credit
+
+            if (netDebt >= 500) {
+                // 🔥 THE RESTRICTION SCREEN
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 100.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.9f))
+                ) {
+                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ACCOUNT RESTRICTED", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                        Text("Your debt exceeds 500 ETB.", color = Color.White, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Please pay your commission to the Bayra Office to reactivate.", color = Color.Yellow, fontSize = 12.sp, textAlign = TextAlign.Center)
+                    }
+                }
+            } else if (activeJob != null) {
+                // ACTIVE JOB UI
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp)) {
                         val price = activeJob!!.child("price").value.toString().toInt()
                         val payType = activeJob!!.child("pay").value?.toString() ?: "CASH"
-                        
-                        Text("$price ETB ($payType)", fontSize = 28.sp, fontWeight = FontWeight.Black)
-                        val status = activeJob!!.child("status").value.toString()
+                        Text("${price} ETB ($payType)", fontSize = 28.sp, fontWeight = FontWeight.Black)
                         
                         Button(onClick = { 
+                            val status = activeJob!!.child("status").value.toString()
                             val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
-                            
                             if(next == "COMPLETED") {
-                                if(payType == "CHAPA") {
-                                    // Empire has the money, owes driver 85%
-                                    driverRef.child("credit").setValue(credit + (price * 0.85).toInt())
-                                } else {
-                                    // Driver has the money, owes empire 15%
-                                    driverRef.child("debt").setValue(debt + (price * 0.15).toInt())
-                                }
+                                if(payType == "CHAPA") driverRef.child("credit").setValue(credit + (price * 0.85).toInt())
+                                else driverRef.child("debt").setValue(debt + (price * 0.15).toInt())
+                                activeJob = null
                             }
                             ref.child(activeJob!!.key!!).child("status").setValue(next)
-                        }, Modifier.fillMaxWidth().height(55.dp)) { Text(next, fontWeight = FontWeight.Bold) }
+                        }, Modifier.fillMaxWidth().height(55.dp)) { Text(status) }
                     }
                 }
             } else {
-                LazyColumn(Modifier.heightIn(max = 200.dp)) {
+                // NORMAL RADAR LIST
+                LazyColumn(Modifier.heightIn(max = 250.dp)) {
                     items(jobs) { snap ->
                         Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                             Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                                Column {
-                                    Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
-                                    Text("${snap.child("price").value} ETB • ${snap.child("pay").value ?: "CASH"}", color = Color(0xFF1A237E), fontSize = 12.sp)
-                                }
+                                Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
                                 Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }) { Text("ACCEPT") }
                             }
                         }
