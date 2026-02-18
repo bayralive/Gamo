@@ -3,8 +3,9 @@ package com.bayra.customer
 import android.Manifest
 import android.content.*
 import android.net.Uri
-import android.os.Bundle
+import android.os.*
 import android.preference.PreferenceManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_treasury_vfinal", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v163", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -80,14 +81,16 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
     var step by remember { mutableStateOf("PICKUP") }
     var status by remember { mutableStateOf("IDLE") }
     var activeRideId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
-    var activePrice by remember { mutableStateOf("0") } // 🔥 TRACKS PRICE FOR CHAPA
+    var activePrice by remember { mutableStateOf("0") }
     var driverName by remember { mutableStateOf("") }
     
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
+    
     var isGeneratingLink by remember { mutableStateOf(false) }
+    var cashModeSelected by remember { mutableStateOf(false) }
 
     LaunchedEffect(activeRideId) {
         if (activeRideId.isNotEmpty()) {
@@ -95,7 +98,7 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                 .addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(s: DataSnapshot) {
                         val fs = s.child("status").value?.toString() ?: "IDLE"
-                        activePrice = s.child("price").value?.toString() ?: "0" // 🔥 PULL PRICE
+                        activePrice = s.child("price").value?.toString() ?: "0"
                         driverName = s.child("driverName").value?.toString() ?: ""
                         status = fs
                     }
@@ -127,45 +130,77 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             }
         )
 
-        // 🔥 THE CHAPA TREASURY OVERLAY
+        // 🔥 THE FAIL-SAFE TREASURY OVERLAY
         if (status == "COMPLETED") {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(32.dp)) {
                     Text(text = "TRIP FINISHED", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
                     Text(text = "$activePrice ETB", fontSize = 60.sp, fontWeight = FontWeight.ExtraBold)
                     if(driverName.isNotEmpty()) Text(text = "Driver: $driverName", color = Color.Gray)
-                    Spacer(modifier = Modifier.height(40.dp))
                     
-                    if (isGeneratingLink) {
-                        CircularProgressIndicator(color = Color(0xFF1A237E))
+                    Spacer(modifier = Modifier.height(40.dp))
+
+                    if (!cashModeSelected) {
+                        // CHOICE A: CHAPA
+                        if (isGeneratingLink) {
+                            CircularProgressIndicator(color = Color(0xFF1A237E))
+                            Text("Connecting to Treasury...", modifier = Modifier.padding(top = 10.dp))
+                        } else {
+                            Button(
+                                onClick = { 
+                                    isGeneratingLink = true
+                                    thread {
+                                        try {
+                                            val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
+                                            val conn = url.openConnection() as HttpURLConnection
+                                            conn.requestMethod = "POST"; conn.doOutput = true
+                                            conn.setRequestProperty("Content-Type", "application/json")
+                                            val body = JSONObject().put("amount", activePrice).put("email", email).put("name", name).put("rideId", activeRideId).toString()
+                                            conn.outputStream.write(body.toByteArray())
+                                            
+                                            val input = conn.inputStream.bufferedReader().readText()
+                                            val res = JSONObject(input)
+                                            val payUrl = res.getJSONObject("data").getString("checkout_url")
+                                            
+                                            isGeneratingLink = false
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(payUrl)))
+                                            
+                                            // Auto-close ride only after browser opens
+                                            status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
+                                        } catch (e: Exception) { 
+                                            isGeneratingLink = false
+                                            (context as MainActivity).runOnUiThread { 
+                                                Toast.makeText(context, "Network Error. Please try again or pay cash.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(65.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
+                                shape = RoundedCornerShape(16.dp)
+                            ) { Text(text = "PAY ONLINE (CHAPA)", fontWeight = FontWeight.Bold) }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            TextButton(onClick = { cashModeSelected = true }) { 
+                                Text(text = "PAY WITH CASH INSTEAD", color = Color.Gray) 
+                            }
+                        }
                     } else {
+                        // CHOICE B: CASH CONFIRMATION (The Safety Net)
+                        Text(text = "Please hand cash to the driver.", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(20.dp))
                         Button(
                             onClick = { 
-                                isGeneratingLink = true
-                                thread {
-                                    try {
-                                        val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
-                                        val conn = url.openConnection() as HttpURLConnection
-                                        conn.requestMethod = "POST"; conn.doOutput = true
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        val body = JSONObject().put("amount", activePrice).put("email", email).put("name", name).put("rideId", activeRideId).toString()
-                                        conn.outputStream.write(body.toByteArray())
-                                        val res = JSONObject(conn.inputStream.bufferedReader().readText())
-                                        val payUrl = res.getJSONObject("data").getString("checkout_url")
-                                        isGeneratingLink = false
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(payUrl)))
-                                        status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
-                                    } catch (e: Exception) { isGeneratingLink = false }
-                                }
+                                status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
+                                cashModeSelected = false
                             },
-                            modifier = Modifier.fillMaxWidth().height(65.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) { Text(text = "PAY WITH CHAPA", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                            modifier = Modifier.fillMaxWidth().height(60.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                        ) { Text("CONFIRM & FINISH") }
                         
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TextButton(onClick = { status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply() }) { 
-                            Text(text = "PAID WITH CASH", color = Color.Gray) 
+                        TextButton(onClick = { cashModeSelected = false }) { 
+                            Text("GO BACK TO ONLINE PAYMENT") 
                         }
                     }
                 }
@@ -196,7 +231,7 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 if (step == "PICKUP") {
                     Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
                 } else if (step == "DEST") {
@@ -212,7 +247,7 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                         onClick = { 
                             val id = "R_${System.currentTimeMillis()}"
                             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf(
-                                "id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email, "status" to "REQUESTED", "price" to fare.toString(), 
+                                "id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to fare.toString(), 
                                 "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, 
                                 "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label
                             ))
