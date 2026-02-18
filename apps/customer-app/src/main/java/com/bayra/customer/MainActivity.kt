@@ -25,12 +25,12 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 
-enum class Tier(val label: String, val base: Double) {
-    POOL("Pool", 80.0), 
-    COMFORT("Comfort", 120.0), 
-    CODE_3("Code 3", 280.0), 
-    BAJAJ_HR("Bajaj Hr", 350.0),
-    C3_HR("C3 Hr", 550.0) // 🔥 RESTORED MISSING TIER
+enum class Tier(val label: String, val base: Double, val isHr: Boolean) {
+    POOL("Pool", 80.0, false), 
+    COMFORT("Comfort", 120.0, false), 
+    CODE_3("Code 3", 280.0, false), 
+    BAJAJ_HR("Bajaj Hr", 350.0, true),
+    C3_HR("C3 Hr", 550.0, true)
 }
 
 class MainActivity : ComponentActivity() {
@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v145", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v146", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
 
@@ -70,12 +70,13 @@ fun BookingCore(name: String) {
     var status by remember { mutableStateOf("IDLE") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
+    var hrCount by remember { mutableStateOf(1) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { context -> 
             MapView(context).apply { 
                 setTileSource(TileSourceFactory.MAPNIK)
-                controller.setZoom(17.5) // 🔥 TACTICAL ZOOM INCREASED
+                controller.setZoom(17.5)
                 controller.setCenter(GeoPoint(6.0333, 37.5500))
                 mapRef = this 
             } 
@@ -91,26 +92,57 @@ fun BookingCore(name: String) {
             }
         } else {
             if (step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 44.sp, modifier = Modifier.padding(bottom = 40.dp)) }
+            
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+                // TIER SELECTOR
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
+                        Surface(modifier = Modifier.clickable { selectedTier = t; if(t.isHr) step = "CONFIRM" }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
                             Text(text = t.label, modifier = Modifier.padding(12.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
+                
                 Spacer(modifier = Modifier.height(16.dp))
-                if (step == "PICKUP") Button(onClick = { step = "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
-                else if (step == "DEST") Button(onClick = { step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
-                else {
-                    val fare = (selectedTier.base * 1.15).toInt()
-                    Text(text = "$fare ETB", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.Red)
+
+                // HOURLY CONTROLS
+                if (selectedTier.isHr && step == "CONFIRM") {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "Duration:", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Text(text = "−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                            Text(text = "$hrCount HR", modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                            IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Text(text = "+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                if (step == "PICKUP") {
+                    Button(onClick = { step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
+                } else if (step == "DEST") {
+                    Button(onClick = { step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
+                } else {
+                    val baseFare = if(selectedTier.isHr) (selectedTier.base * hrCount) else selectedTier.base
+                    val finalFare = (baseFare * 1.15).toInt()
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "$finalFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.Red)
+                        if(!selectedTier.isHr) TextButton(onClick = { step = "PICKUP" }) { Text("Edit Route") }
+                    }
+                    
                     Button(onClick = { 
                         val id = "R_${System.currentTimeMillis()}"
                         val pt = mapRef?.mapCenter as GeoPoint
-                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to fare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, "tier" to selectedTier.label))
+                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf(
+                            "id" to id, "pName" to name, "status" to "REQUESTED", 
+                            "price" to finalFare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, 
+                            "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0
+                        ))
                         status = "SEARCHING" 
-                    }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)), shape = RoundedCornerShape(12.dp)) { Text(text = "BOOK NOW", fontWeight = FontWeight.Bold) }
+                    }, modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)), shape = RoundedCornerShape(12.dp)) { 
+                        Text(text = if(selectedTier.isHr) "BOOK CONTRAT" else "BOOK NOW", fontWeight = FontWeight.ExtraBold) 
+                    }
                 }
             }
         }
