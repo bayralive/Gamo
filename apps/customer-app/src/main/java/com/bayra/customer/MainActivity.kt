@@ -2,7 +2,6 @@ package com.bayra.customer
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
@@ -51,8 +50,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v151", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v152", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -73,45 +71,26 @@ fun PassengerApp() {
 fun BookingCore(name: String, phone: String, email: String, prefs: android.content.SharedPreferences) {
     var step by remember { mutableStateOf("PICKUP") }
     var status by remember { mutableStateOf("IDLE") }
-    var activeRideId by remember { mutableStateOf(prefs.getString("active_ride_id", "") ?: "") }
+    var activeRideId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
     
+    // 🔥 ANCHORED POINTS (Stay set across all tiers)
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
+    
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
+    var hrCount by remember { mutableStateOf(1) }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
 
-    // 🔥 PERSISTENCE ENGINE: Check if request is still active in Firebase on startup
+    // SYNC PERSISTENCE ON STARTUP
     LaunchedEffect(Unit) {
-        if (activeRideId.isNotEmpty()) {
-            FirebaseDatabase.getInstance().getReference("rides/$activeRideId")
-                .addListenerForSingleValueEvent(object : ValueEventListener {
-                    override fun onDataChange(s: DataSnapshot) {
-                        val firebaseStatus = s.child("status").value?.toString()
-                        if (firebaseStatus != null && firebaseStatus != "COMPLETED") {
-                            status = firebaseStatus
-                        } else {
-                            prefs.edit().remove("active_ride_id").apply()
-                            activeRideId = ""
-                            status = "IDLE"
-                        }
-                    }
-                    override fun onCancelled(e: DatabaseError) {}
-                })
-        }
-    }
-
-    // REAL-TIME UPDATES FOR ACTIVE RIDE
-    LaunchedEffect(activeRideId) {
         if (activeRideId.isNotEmpty()) {
             FirebaseDatabase.getInstance().getReference("rides/$activeRideId/status")
                 .addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(s: DataSnapshot) {
-                        val newStatus = s.value?.toString() ?: "IDLE"
-                        if (newStatus == "COMPLETED") {
-                            status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_ride_id").apply()
-                        } else {
-                            status = newStatus
-                        }
+                        val fs = s.value?.toString() ?: "IDLE"
+                        if (fs == "COMPLETED" || fs == "IDLE") {
+                            status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
+                        } else { status = fs }
                     }
                     override fun onCancelled(e: DatabaseError) {}
                 })
@@ -129,7 +108,7 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                     controller.setZoom(17.5)
                     controller.setCenter(GeoPoint(6.0333, 37.5500))
                     
-                    // 🔥 GPS SIGNAL POINT (Blue Dot)
+                    // BLUE DOT SIGNAL
                     val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(context), this)
                     locationOverlay.enableMyLocation()
                     overlays.add(locationOverlay)
@@ -139,34 +118,27 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             },
             update = { view ->
                 view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
-                pickupPt?.let { pt -> Marker(view).apply { position = pt; title = "Pickup" }.also { view.overlays.add(it) } }
-                destPt?.let { pt -> Marker(view).apply { position = pt; title = "Destination" }.also { view.overlays.add(it) } }
+                pickupPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
+                if (!selectedTier.isHr) {
+                    destPt?.let { pt -> Marker(view).apply { position = pt; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) } }
+                }
                 view.invalidate()
             }
         )
 
         if (status != "IDLE") {
-            // SEARCHING / ACTIVE OVERLAY
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator(color = Color(0xFF1A237E), strokeWidth = 8.dp, modifier = Modifier.size(80.dp))
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(text = status, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text(text = "Please stay on this screen", color = Color.Gray)
-                    Spacer(modifier = Modifier.height(40.dp))
-                    Button(
-                        onClick = { 
-                            FirebaseDatabase.getInstance().getReference("rides/$activeRideId").removeValue()
-                            prefs.edit().remove("active_ride_id").apply()
-                            activeRideId = ""; status = "IDLE"
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        modifier = Modifier.height(55.dp).padding(horizontal = 32.dp)
-                    ) { Text(text = "CANCEL REQUEST", fontWeight = FontWeight.Bold) }
+                    CircularProgressIndicator(color = Color(0xFF1A237E), modifier = Modifier.size(80.dp))
+                    Text(text = status, modifier = Modifier.padding(top = 20.dp), fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                    Button(onClick = { 
+                        FirebaseDatabase.getInstance().getReference("rides/$activeRideId").removeValue()
+                        status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
+                    }, modifier = Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "CANCEL") }
                 }
             }
         } else {
-            // BOOKING UI
+            // THE CENTER PIN SELECTOR
             if (step != "CONFIRM") {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
@@ -174,28 +146,71 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             }
 
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
+                // TIER SELECTOR (PERSISTENCE FRIENDLY)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(modifier = Modifier.clickable { selectedTier = t; step = "PICKUP" }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
+                        Surface(
+                            modifier = Modifier.clickable { 
+                                selectedTier = t
+                                // Auto-routing logic based on existing pins
+                                if (t.isHr && pickupPt != null) step = "CONFIRM"
+                                else if (!t.isHr && pickupPt != null && destPt != null) step = "CONFIRM"
+                                else if (pickupPt != null) step = "DEST"
+                                else step = "PICKUP"
+                            }, 
+                            color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), 
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
                             Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(20.dp))
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (selectedTier.isHr && step == "CONFIRM") {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "Hours:", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Text(text = "−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                            Text(text = "$hrCount HR", fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp))
+                            IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Text(text = "+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+
                 if (step == "PICKUP") {
-                    Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
+                    Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { 
+                        Text(text = "CONFIRM PICKUP", fontWeight = FontWeight.Bold) 
+                    }
                 } else if (step == "DEST") {
-                    Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
+                    Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { 
+                        Text(text = "CONFIRM DESTINATION", fontWeight = FontWeight.Bold) 
+                    }
                 } else {
+                    // 🔥 PRICE TRANSPARENCY RESTORED
+                    val raw = if(selectedTier.isHr) (selectedTier.base * hrCount) else (selectedTier.base * 2.8)
+                    val fare = (raw * 1.15).toInt()
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color(0xFFD50000))
+                        TextButton(onClick = { pickupPt = null; destPt = null; step = "PICKUP" }) { Text(text = "Reset Points") }
+                    }
+                    
                     Button(
                         onClick = { 
                             val id = "R_${System.currentTimeMillis()}"
-                            val dbRef = FirebaseDatabase.getInstance().getReference("rides/$id")
-                            dbRef.setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email, "status" to "REQUESTED", "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label))
-                            prefs.edit().putString("active_ride_id", id).apply()
+                            FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf(
+                                "id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email,
+                                "status" to "REQUESTED", "price" to fare.toString(), 
+                                "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, 
+                                "dLat" to destPt?.latitude, "dLon" to destPt?.longitude,
+                                "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0
+                            ))
                             activeRideId = id; status = "REQUESTED"
+                            prefs.edit().putString("active_id", id).apply()
                         }, 
-                        modifier = Modifier.fillMaxWidth().height(65.dp),
+                        modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 10.dp), 
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
                         shape = RoundedCornerShape(12.dp)
                     ) { Text(text = "BOOK NOW", fontWeight = FontWeight.ExtraBold) }
@@ -212,10 +227,12 @@ fun LoginView(onLogin: (String, String, String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(200.dp))
         Text(text = "BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-        Spacer(Modifier.height(20.dp))
-        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text(text = "Full Name") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text(text = "Phone Number") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text(text = "Email") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text(text = "START") }
+        Spacer(Modifier.height(30.dp))
+        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text(text = "Phone") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text(text = "Email") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 24.dp)) { Text(text = "START TRAVELING") }
     }
 }
