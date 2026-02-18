@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v163", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v164", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -130,7 +130,6 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             }
         )
 
-        // 🔥 THE FAIL-SAFE TREASURY OVERLAY
         if (status == "COMPLETED") {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(32.dp)) {
@@ -141,10 +140,9 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                     Spacer(modifier = Modifier.height(40.dp))
 
                     if (!cashModeSelected) {
-                        // CHOICE A: CHAPA
                         if (isGeneratingLink) {
                             CircularProgressIndicator(color = Color(0xFF1A237E))
-                            Text("Connecting to Treasury...", modifier = Modifier.padding(top = 10.dp))
+                            Text(text = "Contacting Treasury...", modifier = Modifier.padding(top = 10.dp))
                         } else {
                             Button(
                                 onClick = { 
@@ -154,7 +152,10 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                                             val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                             val conn = url.openConnection() as HttpURLConnection
                                             conn.requestMethod = "POST"; conn.doOutput = true
+                                            conn.connectTimeout = 30000 
+                                            conn.readTimeout = 30000
                                             conn.setRequestProperty("Content-Type", "application/json")
+                                            
                                             val body = JSONObject().put("amount", activePrice).put("email", email).put("name", name).put("rideId", activeRideId).toString()
                                             conn.outputStream.write(body.toByteArray())
                                             
@@ -164,13 +165,11 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                                             
                                             isGeneratingLink = false
                                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(payUrl)))
-                                            
-                                            // Auto-close ride only after browser opens
                                             status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
                                         } catch (e: Exception) { 
                                             isGeneratingLink = false
-                                            (context as MainActivity).runOnUiThread { 
-                                                Toast.makeText(context, "Network Error. Please try again or pay cash.", Toast.LENGTH_LONG).show()
+                                            (context as? ComponentActivity)?.runOnUiThread { 
+                                                Toast.makeText(context, "Network Timeout. Check server or pay cash.", Toast.LENGTH_LONG).show()
                                             }
                                         }
                                     }
@@ -181,14 +180,10 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                             ) { Text(text = "PAY ONLINE (CHAPA)", fontWeight = FontWeight.Bold) }
                             
                             Spacer(modifier = Modifier.height(16.dp))
-                            
-                            TextButton(onClick = { cashModeSelected = true }) { 
-                                Text(text = "PAY WITH CASH INSTEAD", color = Color.Gray) 
-                            }
+                            TextButton(onClick = { cashModeSelected = true }) { Text(text = "PAY WITH CASH INSTEAD", color = Color.Gray) }
                         }
                     } else {
-                        // CHOICE B: CASH CONFIRMATION (The Safety Net)
-                        Text(text = "Please hand cash to the driver.", fontWeight = FontWeight.Bold)
+                        Text(text = "Hand cash to the driver.", fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(20.dp))
                         Button(
                             onClick = { 
@@ -197,11 +192,9 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                             },
                             modifier = Modifier.fillMaxWidth().height(60.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                        ) { Text("CONFIRM & FINISH") }
+                        ) { Text(text = "CONFIRM & FINISH", color = Color.White) }
                         
-                        TextButton(onClick = { cashModeSelected = false }) { 
-                            Text("GO BACK TO ONLINE PAYMENT") 
-                        }
+                        TextButton(onClick = { cashModeSelected = false }) { Text(text = "GO BACK TO ONLINE") }
                     }
                 }
             }
@@ -231,23 +224,22 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                         }
                     }
                 }
+                val fare = ((if(selectedTier.isHr) selectedTier.base else selectedTier.base * 2.8) * 1.15).toInt()
                 Spacer(modifier = Modifier.height(16.dp))
                 if (step == "PICKUP") {
                     Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.isHr) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
                 } else if (step == "DEST") {
                     Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
                 } else {
-                    val raw = if(selectedTier.isHr) selectedTier.base else selectedTier.base * 2.8
-                    val fare = (raw * 1.15).toInt()
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color(0xFFD50000))
-                        TextButton(onClick = { pickupPt = null; destPt = null; step = "PICKUP" }) { Text("Reset") }
+                        TextButton(onClick = { pickupPt = null; destPt = null; step = "PICKUP" }) { Text(text = "Reset") }
                     }
                     Button(
                         onClick = { 
                             val id = "R_${System.currentTimeMillis()}"
                             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf(
-                                "id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to fare.toString(), 
+                                "id" to id, "pName" to name, "pPhone" to phone, "pEmail" to email, "status" to "REQUESTED", "price" to fare.toString(), 
                                 "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, 
                                 "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label
                             ))
