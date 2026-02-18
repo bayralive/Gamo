@@ -26,7 +26,11 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 
 enum class Tier(val label: String, val base: Double) {
-    POOL("Pool", 80.0), COMFORT("Comfort", 120.0), CODE_3("Code 3", 280.0), BAJAJ_HR("Bajaj Hr", 350.0)
+    POOL("Pool", 80.0), 
+    COMFORT("Comfort", 120.0), 
+    CODE_3("Code 3", 280.0), 
+    BAJAJ_HR("Bajaj Hr", 350.0),
+    C3_HR("C3 Hr", 550.0) // 🔥 RESTORED MISSING TIER
 }
 
 class MainActivity : ComponentActivity() {
@@ -41,7 +45,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v144", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v145", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
 
@@ -68,7 +72,14 @@ fun BookingCore(name: String) {
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(factory = { context -> MapView(context).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(16.0); controller.setCenter(GeoPoint(6.0333, 37.5500)); mapRef = this } })
+        AndroidView(factory = { context -> 
+            MapView(context).apply { 
+                setTileSource(TileSourceFactory.MAPNIK)
+                controller.setZoom(17.5) // 🔥 TACTICAL ZOOM INCREASED
+                controller.setCenter(GeoPoint(6.0333, 37.5500))
+                mapRef = this 
+            } 
+        })
 
         if (status != "IDLE") {
             Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
@@ -84,22 +95,22 @@ fun BookingCore(name: String) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
                         Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
-                            Text(text = t.label, modifier = Modifier.padding(12.dp), color = if(selectedTier == t) Color.White else Color.Black)
+                            Text(text = t.label, modifier = Modifier.padding(12.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                if (step == "PICKUP") Button(onClick = { step = "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET PICKUP") }
-                else if (step == "DEST") Button(onClick = { step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION") }
+                if (step == "PICKUP") Button(onClick = { step = "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
+                else if (step == "DEST") Button(onClick = { step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(12.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
                 else {
                     val fare = (selectedTier.base * 1.15).toInt()
                     Text(text = "$fare ETB", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.Red)
                     Button(onClick = { 
                         val id = "R_${System.currentTimeMillis()}"
                         val pt = mapRef?.mapCenter as GeoPoint
-                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to fare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude))
+                        FirebaseDatabase.getInstance().getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to fare.toString(), "pLat" to pt.latitude, "pLon" to pt.longitude, "tier" to selectedTier.label))
                         status = "SEARCHING" 
-                    }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E))) { Text(text = "BOOK NOW") }
+                    }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)), shape = RoundedCornerShape(12.dp)) { Text(text = "BOOK NOW", fontWeight = FontWeight.Bold) }
                 }
             }
         }
