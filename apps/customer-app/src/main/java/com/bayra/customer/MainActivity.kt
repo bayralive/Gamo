@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_treasury_v1", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_treasury_v2", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -74,6 +74,7 @@ fun PassengerApp() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookingCore(name: String, phone: String, email: String, prefs: android.content.SharedPreferences) {
+    val context = LocalContext.current // 🔥 DEFINED AS context
     var step by remember { mutableStateOf("PICKUP") }
     var status by remember { mutableStateOf("IDLE") }
     var activeRideId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
@@ -85,7 +86,6 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
     var mapRef by remember { mutableStateOf<MapView?>(null) }
     var isGeneratingLink by remember { mutableStateOf(false) }
 
-    // PERSISTENCE & STATUS SYNC
     LaunchedEffect(activeRideId) {
         if (activeRideId.isNotEmpty()) {
             FirebaseDatabase.getInstance().getReference("rides/$activeRideId")
@@ -103,14 +103,14 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { context -> 
-                MapView(context).apply { 
+            factory = { factoryCtx -> 
+                MapView(factoryCtx).apply { 
                     setTileSource(TileSourceFactory.MAPNIK)
                     setMultiTouchControls(true) 
                     setBuiltInZoomControls(false)
                     controller.setZoom(17.5)
                     controller.setCenter(GeoPoint(6.0333, 37.5500))
-                    val loc = MyLocationNewOverlay(GpsMyLocationProvider(context), this)
+                    val loc = MyLocationNewOverlay(GpsMyLocationProvider(factoryCtx), this)
                     loc.enableMyLocation()
                     overlays.add(loc)
                     mapRef = this 
@@ -124,7 +124,6 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             }
         )
 
-        // 🔥 THE TREASURY OVERLAY (Triggers on Completion)
         if (status == "COMPLETED") {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.95f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(32.dp)) {
@@ -150,13 +149,10 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                                         val checkoutUrl = response.getString("checkout_url")
                                         isGeneratingLink = false
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUrl))
-                                        ctx.startActivity(intent)
-                                        // Finalize locally
+                                        context.startActivity(intent) // 🔥 FIXEDctx -> context
                                         prefs.edit().remove("active_id").apply()
                                         status = "IDLE"; activeRideId = ""
-                                    } catch (e: Exception) { 
-                                        isGeneratingLink = false
-                                    }
+                                    } catch (e: Exception) { isGeneratingLink = false }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(65.dp),
@@ -165,15 +161,13 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                         ) { Text(text = "PAY WITH CHAPA", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
                         
                         Spacer(modifier = Modifier.height(16.dp))
-                        
-                        TextButton(onClick = { 
-                            status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
-                        }) { Text(text = "PAID WITH CASH", color = Color.Gray) }
+                        TextButton(onClick = { status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply() }) { 
+                            Text(text = "PAID WITH CASH", color = Color.Gray) 
+                        }
                     }
                 }
             }
         } else if (status != "IDLE") {
-            // SEARCHING OVERLAY
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     CircularProgressIndicator(color = Color(0xFF1A237E), modifier = Modifier.size(70.dp))
@@ -185,23 +179,13 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                 }
             }
         } else {
-            // BOOKING UI
-            if (step != "CONFIRM") {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
-                }
+            if (step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp))
             }
-
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(modifier = Modifier.clickable { 
-                            selectedTier = t
-                            if (t.isHr && pickupPt != null) step = "CONFIRM"
-                            else if (!t.isHr && pickupPt != null && destPt != null) step = "CONFIRM"
-                            else if (pickupPt != null) step = "DEST"
-                            else step = "PICKUP"
-                        }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
+                        Surface(modifier = Modifier.clickable { selectedTier = t; step = "PICKUP" }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
                             Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
@@ -212,7 +196,7 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                 } else if (step == "DEST") {
                     Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
                 } else {
-                    val raw = if(selectedTier.isHr) (selectedTier.base * 1) else (selectedTier.base * 2.8)
+                    val raw = if(selectedTier.isHr) selectedTier.base else selectedTier.base * 2.8
                     val fare = (raw * 1.15).toInt()
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = "$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color(0xFFD50000))
@@ -241,7 +225,7 @@ fun LoginView(onLogin: (String, String, String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(200.dp))
         Text(text = "BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(20.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text(text = "Phone") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))

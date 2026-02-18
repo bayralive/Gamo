@@ -21,7 +21,6 @@ android {
     }
     kotlinOptions { 
         jvmTarget = "11" 
-        freeCompilerArgs = freeCompilerArgs + "-P" + "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.8.0"
     }
 }
 dependencies {
