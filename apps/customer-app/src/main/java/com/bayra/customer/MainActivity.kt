@@ -31,7 +31,6 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
-// 🔥 THE SOVEREIGN FREQUENCY
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
 enum class Tier(val label: String, val base: Double, val isHr: Boolean) {
@@ -54,7 +53,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v158", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v160", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -76,18 +75,23 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
     var step by remember { mutableStateOf("PICKUP") }
     var status by remember { mutableStateOf("IDLE") }
     var activeRideId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
+    var driverName by remember { mutableStateOf("") }
+    var dPhone by remember { mutableStateOf("") }
+    
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
 
-    // 🔥 PERSISTENCE & FREQUENCY SYNC
     LaunchedEffect(activeRideId) {
         if (activeRideId.isNotEmpty()) {
-            FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeRideId/status")
+            FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeRideId")
                 .addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(s: DataSnapshot) {
-                        val fs = s.value?.toString() ?: "IDLE"
+                        val fs = s.child("status").value?.toString() ?: "IDLE"
+                        driverName = s.child("driverName").value?.toString() ?: ""
+                        dPhone = s.child("dPhone").value?.toString() ?: ""
+                        
                         if (fs == "COMPLETED" || fs == "IDLE") {
                             status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
                         } else { status = fs }
@@ -128,6 +132,12 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     CircularProgressIndicator(color = Color(0xFF1A237E), modifier = Modifier.size(80.dp))
                     Text(text = status, modifier = Modifier.padding(top = 20.dp), fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                    if (driverName.isNotEmpty()) {
+                        Text(text = "Driver: $driverName", fontWeight = FontWeight.Bold)
+                        if (dPhone.isNotEmpty()) {
+                            Button(onClick = { /* Call logic */ }) { Text("Call Driver") }
+                        }
+                    }
                     Button(onClick = { 
                         FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeRideId").removeValue()
                         status = "IDLE"; activeRideId = ""; prefs.edit().remove("active_id").apply()
@@ -144,17 +154,10 @@ fun BookingCore(name: String, phone: String, email: String, prefs: android.conte
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 28.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(
-                            modifier = Modifier.clickable { 
-                                selectedTier = t
-                                if (t.isHr && pickupPt != null) step = "CONFIRM"
-                                else if (!t.isHr && pickupPt != null && destPt != null) step = "CONFIRM"
-                                else if (pickupPt != null) step = "DEST"
-                                else step = "PICKUP"
-                            }, 
-                            color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), 
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
+                        Surface(modifier = Modifier.clickable { 
+                            selectedTier = t
+                            if (pickupPt != null && (t.isHr || destPt != null)) step = "CONFIRM" else if (pickupPt != null) step = "DEST" else step = "PICKUP"
+                        }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
                             Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
