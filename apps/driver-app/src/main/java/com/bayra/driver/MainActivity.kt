@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
@@ -62,27 +63,47 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v169", Context.MODE_PRIVATE) }
-    
-    var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
-    var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
-    var isRadarOn by remember { mutableStateOf(false) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_guard_v174", Context.MODE_PRIVATE) }
+    var dName by rememberSaveable { mutableStateOf(value = prefs.getString("n", "") ?: "") }
+    var isAuth by remember { mutableStateOf(value = dName.isNotEmpty()) }
+    var isRadarOn by remember { mutableStateOf(value = false) }
 
     if (!isAuth) {
+        var nIn by remember { mutableStateOf(value = "") }
+        var pIn by remember { mutableStateOf(value = "") }
+        var isVerifying by remember { mutableStateOf(value = false) }
+
         Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White),
-            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-            if (logoId != 0) Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(200.dp))
-            Text(text = "BAYRA DRIVER", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-            var nIn by remember { mutableStateOf("") }
-            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
-            Button(
-                onClick = { if (nIn.length > 2) { prefs.edit().putString("n", nIn).apply(); dName = nIn; isAuth = true } },
-                modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 16.dp)
-            ) { Text(text = "LOGIN") }
+            if (logoId != 0) Image(painter = painterResource(id = logoId), null, modifier = Modifier.size(200.dp))
+            Text(text = "DRIVER SECURE LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
+            Spacer(modifier = Modifier.height(30.dp))
+            OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text(text = "Driver Name") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(value = pIn, onValueChange = { pIn = it }, label = { Text(text = "PIN") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+            Spacer(modifier = Modifier.height(20.dp))
+            if (isVerifying) { CircularProgressIndicator() } else {
+                Button(onClick = {
+                    if (nIn.isNotEmpty()) {
+                        isVerifying = true
+                        FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn)
+                            .addListenerForSingleValueEvent(object : ValueEventListener {
+                                override fun onDataChange(s: DataSnapshot) {
+                                    if (s.child("password").value?.toString() == pIn) {
+                                        prefs.edit().putString("n", nIn).apply()
+                                        dName = nIn; isAuth = true
+                                    } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
+                                    isVerifying = false
+                                }
+                                override fun onCancelled(e: DatabaseError) { isVerifying = false }
+                            })
+                    }
+                }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "UNLOCK RADAR") }
+            }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -93,7 +114,6 @@ fun DriverAppRoot() {
                         Button(onClick = { isRadarOn = true }, modifier = Modifier.size(150.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) {
                             Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(50.dp))
                         }
-                        Text(text = "ACTIVATE RADAR", color = Color.White, modifier = Modifier.padding(top = 10.dp))
                     }
                 }
             }
@@ -104,13 +124,15 @@ fun DriverAppRoot() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
+    val ctx = LocalContext.current
+    val activity = ctx as? MainActivity
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
 
-    var jobs by remember { mutableStateOf(listOf<DataSnapshot>()) }
-    var activeJob by remember { mutableStateOf<DataSnapshot?>(null) }
-    var debt by remember { mutableStateOf(0) }
-    var credit by remember { mutableStateOf(0) }
+    var jobs by remember { mutableStateOf(value = listOf<DataSnapshot>()) }
+    var activeJobSnap by remember { mutableStateOf<DataSnapshot?>(value = null) }
+    var debt by remember { mutableStateOf(value = 0) }
+    var credit by remember { mutableStateOf(value = 0) }
 
     LaunchedEffect(driverName) {
         driverRef.addValueEventListener(object : ValueEventListener {
@@ -131,7 +153,7 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
                     if (it.child("status").value == "REQUESTED") list.add(it)
                     else if (it.child("status").value != "COMPLETED" && it.child("driverName").value == driverName) current = it
                 }
-                jobs = list; activeJob = current
+                jobs = list; activeJobSnap = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
@@ -143,47 +165,56 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
             Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black) {
                 Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column { Text(text = "CREDIT: $credit", color = Color.Cyan, fontSize = 12.sp); Text(text = "DEBT: $debt", color = Color.Red, fontSize = 12.sp) }
+                    Column { 
+                        Text(text = "CREDIT: $credit", color = Color.Cyan, fontSize = 12.sp)
+                        Text(text = "DEBT: $debt", color = Color.Red, fontSize = 12.sp) 
+                    }
                     TextButton(onClick = onLogout) { Text(text = "LOGOUT", color = Color.White) }
                 }
             }
 
-            val netDebt = debt - credit
-            if (netDebt >= 500) {
+            if (debt - credit >= 500) {
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red)) {
-                    Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "ACCOUNT LOCKED", fontWeight = FontWeight.Bold, color = Color.White)
-                        Text(text = "Pay commission to unlock.", color = Color.White, fontSize = 12.sp)
-                    }
+                    Text(text = "ACCOUNT LOCKED - PAY COMMISSION", modifier = Modifier.padding(20.dp), color = Color.White, fontWeight = FontWeight.Bold)
                 }
-            } else if (activeJob != null) {
+            } else if (activeJobSnap != null) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        val price = activeJob!!.child("price").value?.toString() ?: "0"
-                        Text(text = "$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Black)
+                        val price = activeJobSnap!!.child("price").value?.toString() ?: "0"
+                        val payMethod = activeJobSnap!!.child("pay").value?.toString() ?: "CASH"
                         
-                        // 🔥 LOGIC MOVED OUTSIDE CLICK BLOCK TO FIX SCOPE ERROR
-                        val currentStatus = activeJob!!.child("status").value?.toString() ?: ""
-                        val label = when(currentStatus) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "FINISH" }
+                        Text(text = "$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                        // 🔥 SHOW PAYMENT METHOD FOR TRANSPARENCY
+                        Text(text = "Payment Method: $payMethod", color = if(payMethod == "CHAPA") Color(0xFF2E7D32) else Color.Black, fontWeight = FontWeight.Bold)
+                        
+                        val status = activeJobSnap!!.child("status").value?.toString() ?: ""
+                        val label = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "FINISH TRIP" }
                         
                         Button(onClick = { 
-                            val nextStatus = when(currentStatus) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
-                            if (nextStatus == "COMPLETED") {
-                                val p = price.toInt()
-                                if (activeJob!!.child("pay").value == "CHAPA") driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
-                                else driverRef.child("debt").setValue(debt + (p * 0.15).toInt())
+                            val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
+                            if (next == "COMPLETED") {
+                                val p = price.replace("[^0-9]".toRegex(), "").toInt()
+                                // 🔥 THE LEDGER FIX: Identify payMethod before updating
+                                if (payMethod == "CHAPA") {
+                                    driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
+                                } else {
+                                    driverRef.child("debt").setValue(debt + (p * 0.15).toInt())
+                                }
                             }
-                            ref.child(activeJob!!.key!!).child("status").setValue(nextStatus)
-                        }, modifier = Modifier.fillMaxWidth()) { Text(text = label) }
+                            ref.child(activeJobSnap!!.key!!).child("status").setValue(next)
+                        }, modifier = Modifier.fillMaxWidth().height(55.dp).padding(top = 10.dp)) { Text(text = label) }
                     }
                 }
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                     items(jobs) { snap ->
                         Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Row(modifier = Modifier.padding(16.dp), Arrangement.SpaceBetween) {
-                                Text(text = snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
-                                Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text(text = "ACCEPT") }
+                            Row(modifier = Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                                Column {
+                                    Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
+                                    Text("${snap.child("price").value} ETB")
+                                }
+                                Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
                             }
                         }
                     }
