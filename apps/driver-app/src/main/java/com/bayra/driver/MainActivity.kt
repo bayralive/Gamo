@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v168", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_driver_v169", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
@@ -103,8 +104,6 @@ fun DriverAppRoot() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
-    val ctx = LocalContext.current
-    val activity = ctx as? MainActivity
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
 
@@ -142,7 +141,6 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
         AndroidView(factory = { c -> MapView(c).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } })
         
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-            // HUD
             Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black) {
                 Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column { Text(text = "CREDIT: $credit", color = Color.Cyan, fontSize = 12.sp); Text(text = "DEBT: $debt", color = Color.Red, fontSize = 12.sp) }
@@ -150,7 +148,6 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
                 }
             }
 
-            // 🔥 THE ENFORCER LOGIC
             val netDebt = debt - credit
             if (netDebt >= 500) {
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red)) {
@@ -164,23 +161,27 @@ fun RadarHub(driverName: String, isRadarOn: Boolean, onLogout: () -> Unit) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         val price = activeJob!!.child("price").value?.toString() ?: "0"
                         Text(text = "$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Black)
-                        val status = activeJob!!.child("status").value?.toString() ?: ""
+                        
+                        // 🔥 LOGIC MOVED OUTSIDE CLICK BLOCK TO FIX SCOPE ERROR
+                        val currentStatus = activeJob!!.child("status").value?.toString() ?: ""
+                        val label = when(currentStatus) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "FINISH" }
+                        
                         Button(onClick = { 
-                            val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
-                            if (next == "COMPLETED") {
+                            val nextStatus = when(currentStatus) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
+                            if (nextStatus == "COMPLETED") {
                                 val p = price.toInt()
                                 if (activeJob!!.child("pay").value == "CHAPA") driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
                                 else driverRef.child("debt").setValue(debt + (p * 0.15).toInt())
                             }
-                            ref.child(activeJob!!.key!!).child("status").setValue(next)
-                        }, modifier = Modifier.fillMaxWidth()) { Text(text = next) }
+                            ref.child(activeJob!!.key!!).child("status").setValue(nextStatus)
+                        }, modifier = Modifier.fillMaxWidth()) { Text(text = label) }
                     }
                 }
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
                     items(jobs) { snap ->
                         Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(modifier = Modifier.padding(16.dp), Arrangement.SpaceBetween) {
                                 Text(text = snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
                                 Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text(text = "ACCEPT") }
                             }
