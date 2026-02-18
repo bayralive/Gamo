@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,7 +39,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
-// 🔥 HARDENED DATA MODEL (Matching Passenger v154)
+// 🔥 FIELD-SAFE DATA MODEL
 data class RideJob(
     val id: String = "",
     val pName: String = "",
@@ -130,7 +130,7 @@ fun DriverAppRoot() {
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.PowerSettingsNew, null, Modifier.size(40.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(50.dp))
                                 Text(text = "ACTIVATE")
                             }
                         }
@@ -156,7 +156,6 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogo
                 val list = mutableListOf<RideJob>()
                 var current: RideJob? = null
                 s.children.forEach { snap ->
-                    // 🔥 SAFE MANUAL MAPPING: Prevents missing field crashes
                     val status = snap.child("status").value?.toString() ?: "IDLE"
                     val r = RideJob(
                         id = snap.key ?: "",
@@ -207,7 +206,7 @@ fun RadarHub(driverName: String, driverPhone: String, isRadarOn: Boolean, onLogo
                             }
                         }
                         val next = when(activeJob!!.status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
-                        Button(onClick = { ref.child(activeJob!!.id).updateChildren(mapOf("status" to next)) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        Button(onClick = { ref.child(activeJob!!.id).updateChildren(mapOf("status" to next)) }, modifier = Modifier.fillMaxWidth().height(55.dp).padding(top = 10.dp)) {
                             Text(text = "UPDATE STATUS", fontWeight = FontWeight.Bold)
                         }
                     }
