@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sovereign Theme Definition -->
+    <style name="Theme.Material3.DayNight" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#1A237E</item>
+        <item name="android:statusBarColor">#1A237E</item>
+    </style>
+</resources>
