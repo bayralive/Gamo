@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v188", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v189", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
@@ -77,18 +77,15 @@ fun PassengerSuperApp() {
             drawerState = drawerState,
             drawerContent = {
                 ModalDrawerSheet {
-                    Spacer(Modifier.height(12.dp))
-                    Column(Modifier.padding(16.dp)) {
-                        Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), tint = Color(0xFF1A237E))
-                        Text(pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(pEmail, fontSize = 14.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(64.dp), tint = Color(0xFF1A237E))
+                        Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(text = pEmail, fontSize = 14.sp, color = Color.Gray)
                     }
                     Divider()
-                    NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                    NavigationDrawerItem(label = { Text("My Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
-                    NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
-                    NavigationDrawerItem(label = { Text("Promo") }, selected = currentView == "PROMO", onClick = { currentView = "PROMO"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.LocalOffer, null) })
-                    Divider()
+                    NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                    NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                     NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                 }
             }
@@ -96,19 +93,14 @@ fun PassengerSuperApp() {
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text("BAYRA TRAVEL", fontWeight = FontWeight.Black, fontSize = 18.sp) },
-                        navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null) } },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                        title = { Text(text = "BAYRA TRAVEL", fontWeight = FontWeight.Black) },
+                        navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null) } }
                     )
                 }
             ) { p ->
-                Box(Modifier.padding(p)) {
-                    when(currentView) {
-                        "MAP" -> BookingHub(pName, prefs)
-                        "ORDERS" -> HistoryPage(pName)
-                        "NOTIF" -> NotificationPage()
-                        "PROMO" -> PromoPage()
-                    }
+                Box(modifier = Modifier.padding(p)) {
+                    if (currentView == "MAP") BookingHub(pName, prefs)
+                    else HistoryPage(pName)
                 }
             }
         }
@@ -121,8 +113,6 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
     var status by remember { mutableStateOf("IDLE") }
     var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
-    var step by remember { mutableStateOf("PICKUP") }
-    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
 
     LaunchedEffect(activeId) {
@@ -134,33 +124,34 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500)); mapRef = this } })
         
         if (status != "IDLE") {
-            Surface(Modifier.fillMaxSize(), color = Color.White) {
-                Column(Arrangement.Center, Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(); Text(status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+                Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Text(text = status, modifier = Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
                     Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { Text("📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Tier.values().toList()) { t ->
-                        Surface(Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
-                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black)
+                        Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
+                            Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black)
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { 
                     val id = "R_${System.currentTimeMillis()}"
                     val pt = mapRef?.mapCenter as GeoPoint
-                    FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pt.latitude, "pLon" to pt.longitude))
+                    FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pt.latitude, "pLon" to pt.longitude, "tier" to selectedTier.label))
                     activeId = id; prefs.edit().putString("active_id", id).apply()
-                }, Modifier.fillMaxWidth().height(60.dp)) { Text("BOOK ${selectedTier.label.uppercase()}") }
+                }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "BOOK ${selectedTier.label.uppercase()}") }
             }
         }
     }
@@ -175,26 +166,23 @@ fun HistoryPage(name: String) {
             override fun onCancelled(e: DatabaseError) {}
         })
     }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
-        item { Text("Order History", fontSize = 24.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(16.dp)) }
-        if (trips.isEmpty()) item { Box(Modifier.fillParentMaxSize(), Alignment.Center) { Text("No orders yet. History is to make!") } }
-        items(trips) { t -> Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) { Text("Trip to Center"); Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } }
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        item { Text(text = "Order History", fontSize = 24.sp, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.height(16.dp)) }
+        if (trips.isEmpty()) item { Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) { Text(text = "No orders yet.") } }
+        items(trips) { t -> Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "Ride"); Text(text = "${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } }
     }
 }
-
-@Composable fun NotificationPage() { Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Alignment.CenterHorizontally) { Icon(Icons.Filled.Notifications, null, Modifier.size(64.dp), Color.Gray); Text("No new notifications") } } }
-@Composable fun PromoPage() { Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No active promos") } }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginView(onLogin: (String, String) -> Unit) {
     var n by remember { mutableStateOf("") }; var e by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-        Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(180.dp))
-        Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-        Spacer(Modifier.height(30.dp))
+    Column(modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painter = painterResource(id = R.drawable.logo_passenger), contentDescription = null, modifier = Modifier.size(180.dp))
+        Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
+        Spacer(modifier = Modifier.height(30.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START TRAVELING") }
+        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START TRAVELING") }
     }
 }
