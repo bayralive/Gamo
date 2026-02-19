@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,8 +32,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.google.firebase.database.*
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -65,8 +68,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v186", Context.MODE_PRIVATE) }
+    val activity = ctx as? MainActivity
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v180", Context.MODE_PRIVATE) }
+    
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
+    var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
 
@@ -91,7 +97,11 @@ fun DriverAppRoot() {
                     isVerifying = true
                     FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(s: DataSnapshot) {
-                            if (s.child("password").value?.toString() == pIn) { prefs.edit().putString("n", nIn).apply(); dName = nIn; isAuth = true } 
+                            if (s.child("password").value?.toString() == pIn) { 
+                                val phone = s.child("phone").value?.toString() ?: ""
+                                prefs.edit().putString("n", nIn).putString("p", phone).apply()
+                                dName = nIn; dPhone = phone; isAuth = true 
+                            } 
                             else Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show()
                             isVerifying = false
                         }
@@ -110,7 +120,7 @@ fun DriverAppRoot() {
             }
         ) { padding ->
             Box(Modifier.padding(padding)) {
-                if (currentTab == "HOME") RadarHub(dName) { prefs.edit().clear().apply(); isAuth = false }
+                if (currentTab == "HOME") RadarHub(dName, dPhone) { prefs.edit().clear().apply(); isAuth = false }
                 else DriverAccountView(dName) { prefs.edit().clear().apply(); isAuth = false }
             }
         }
@@ -161,7 +171,7 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, driverPhone: String, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
@@ -257,7 +267,21 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
                            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                                Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                    Column { Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text("${snap.child("price").value} ETB", color = Color.Blue) }
-                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
+                                   // 🔥 THE FIX: Use 'driverName' (from params) instead of 'dName' (from activity)
+                                   Button(onClick = { 
+                                       ref.child(snap.key!!).runTransaction(object : Transaction.Handler {
+                                           override fun doTransaction(currentData: MutableData): Transaction.Result {
+                                               if (currentData.child("status").value == "REQUESTED") {
+                                                   currentData.child("status").value = "ACCEPTED"
+                                                   currentData.child("driverName").value = driverName
+                                                   currentData.child("dPhone").value = driverPhone
+                                                   return Transaction.success(currentData)
+                                               }
+                                               return Transaction.abort()
+                                           }
+                                           override fun onComplete(error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?) {}
+                                       })
+                                   }) { Text("ACCEPT") }
                                }
                            }
                        }
