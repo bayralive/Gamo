@@ -5,6 +5,7 @@ import android.content.*
 import android.net.Uri
 import android.os.*
 import android.preference.PreferenceManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,17 +60,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v190", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v191", Context.MODE_PRIVATE) }
     
-    // Theme State
-    var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
-    
-    // Auth State
+    var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
     
-    // Navigation State
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
@@ -91,7 +88,7 @@ fun PassengerSuperApp() {
                             Text(text = pEmail, fontSize = 14.sp, color = Color.Gray)
                         }
                         Divider()
-                        NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                        NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
                         NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                         NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
                         NavigationDrawerItem(label = { Text("Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
@@ -114,10 +111,7 @@ fun PassengerSuperApp() {
                             "MAP" -> BookingHub(pName, prefs)
                             "ORDERS" -> HistoryPage(pName)
                             "NOTIF" -> NotificationPage()
-                            "SETTINGS" -> SettingsPage(isDarkMode) { 
-                                isDarkMode = it
-                                prefs.edit().putBoolean("dark_mode", it).apply()
-                            }
+                            "SETTINGS" -> SettingsPage(isDarkMode) { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }
                             "ABOUT" -> AboutUsPage()
                         }
                     }
@@ -128,61 +122,39 @@ fun PassengerSuperApp() {
 }
 
 @Composable
-fun SettingsPage(isDarkMode: Boolean, onToggleTheme: (Boolean) -> Unit) {
+fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
     Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
         Text(text = "Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(20.dp))
-        
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Brightness6, null)
+                Icon(Icons.Filled.Settings, null) // 🔥 REPLACED Brightness6
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(text = "App Appearance (Dark Mode)")
+                Text(text = "Dark Mode")
             }
-            Switch(checked = isDarkMode, onCheckedChange = onToggleTheme)
+            Switch(checked = isDarkMode, onCheckedChange = onToggle)
         }
-        
         Divider(modifier = Modifier.padding(vertical = 16.dp))
-        
         Text(text = "Get in Touch", fontWeight = FontWeight.Bold, color = Color.Gray)
         Spacer(modifier = Modifier.height(12.dp))
-        
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) {
-            Icon(Icons.Filled.Send, null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Official Telegram")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = { 
-            val intent = Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }
-            ctx.startActivity(intent)
-        }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) {
-            Icon(Icons.Filled.Email, null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Email Support")
+            Icon(Icons.Filled.Send, null); Spacer(Modifier.width(8.dp)); Text("Telegram Support")
         }
     }
 }
 
 @Composable
 fun AboutUsPage() {
-    val scroll = rememberScrollState()
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(scroll)) {
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Text(text = "Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
         Text(text = "Sarotethai nuna maaddo,\nAadhidatethai nuna kaaletho", fontStyle = FontStyle.Italic, color = Color.Gray)
         Spacer(modifier = Modifier.height(20.dp))
-        
         Text(text = "የክፍያ እና የእርዳታ መመሪያ (Billing & Support)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(text = "1. መደበኛ የጉዞ ክፍያ (Ride)\nመነሻ ክፍያ፦ 50 ብር (ቀሪው ሂሳብ እንደ ርቀቱ ይሰላል)።\nየሌሊት ጭማሪ፦ ከምሽቱ 2፡00 እስከ ማለዳ 12፡00 ድረስ በየጉዞው ላይ 200 ብር ይታሰባል።\nየጋራ ጉዞ (Pool)፦ የ20% ቅናሽ።", fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = "2. የኮንትራት ክፍያ (Contrat)\nየሰዓት ሂሳብ፦ በሰዓት 350 ብር (ባጃጅ) ወይም 500 ብር (መኪና)።\nየርቀት ገደብ፦ በሰዓት እስከ 12 ኪ.ሜ (ከገደቡ በላይ ለእያንዳንዱ ኪ.ሜ 30 ብር ተጨማሪ ይታሰባል)።", fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = "3. ደህንነት እና ጥበቃ (Security & Trust) 🛡️\nየተረጋገጡ አሽከርካሪዎች፦ ሁሉም አሽከርካሪዎቻችን ማንነታቸው እና የባህሪ መዝገባቸው በጥብቅ የተረጋገጠ ነው።\nየቀጥታ ክትትል (GPS)፦ እያንዳንዱ ጉዞ በGPS ስለሚታገዝ ደህንነትዎ የተጠበቀ ነው።", fontSize = 14.sp)
-        
+        Text(text = "• መነሻ ክፍያ፦ 50 ብር\n• የሌሊት ጭማሪ፦ 200 ብር\n• የጋራ ጉዞ (Pool)፦ 20% ቅናሽ\n• ባጃጅ፦ 350 ብር/ሰዓት\n• መኪና፦ 500 ብር/ሰዓት", fontSize = 14.sp)
         Spacer(modifier = Modifier.height(20.dp))
-        Text(text = "About Bayra Travel", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(text = "We are the local pride of Arba Minch, dedicated to modernizing tourism and trade in the South. Speed, comfort, and community trust are our core pillars.\n\nBayra Travel – Wisdom and Peace in Every Journey! 🕊️✨🏁", fontSize = 14.sp)
+        Text(text = "About Bayra", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(text = "We are the local pride of Arba Minch, dedicated to modernizing tourism and trade in the South.\n\nWisdom and Peace in Every Journey! 🕊️✨🏁", fontSize = 14.sp)
     }
 }
 
@@ -193,18 +165,17 @@ fun NotificationPage() {
         Spacer(modifier = Modifier.height(20.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "🎄", fontSize = 30.sp)
+                Text(text = "🎁", fontSize = 30.sp)
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text(text = "Happy Holidays 30% Discount", fontWeight = FontWeight.Bold)
-                    Text(text = "Dec 24, 2025", fontSize = 12.sp, color = Color.Gray)
+                    Text(text = "Welcome to Bayra Travel", fontWeight = FontWeight.Bold)
+                    Text(text = "Your journey starts here.", fontSize = 12.sp, color = Color.Gray)
                 }
             }
         }
     }
 }
 
-// ... (BookingHub, HistoryPage, and LoginView remain same as Phase 189)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
@@ -231,7 +202,7 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = { 
@@ -270,6 +241,6 @@ fun LoginView(onLogin: (String, String) -> Unit) {
         Spacer(modifier = Modifier.height(30.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START TRAVELING") }
+        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START") }
     }
 }
