@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,7 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List // 🔥 REPLACED HISTORY WITH LIST
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -32,10 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import com.google.firebase.database.*
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -68,9 +65,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v185", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v186", Context.MODE_PRIVATE) }
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
@@ -82,7 +77,7 @@ fun DriverAppRoot() {
 
         Column(modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-            if (logoId != 0) Image(painter = painterResource(id = logoId), contentDescription = null, modifier = Modifier.size(200.dp))
+            if (logoId != 0) Image(painter = painterResource(id = logoId), null, modifier = Modifier.size(200.dp))
             Text("DRIVER SECURE LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
             Spacer(Modifier.height(30.dp))
             OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text("Driver Name") }, modifier = Modifier.fillMaxWidth())
@@ -122,8 +117,6 @@ fun DriverAppRoot() {
     }
 }
 
-// 🔥 ADDED OPT-IN TO FIX EXPERIMENTAL API ERROR
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
@@ -143,11 +136,8 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Color(0xFFFAFAFA)).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(40.dp))
         Icon(Icons.Filled.Person, null, Modifier.size(100.dp), tint = Color.Gray)
-        Spacer(Modifier.height(20.dp))
         Text(driverName, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        
         Spacer(Modifier.height(40.dp))
-        
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(4.dp)) {
             Column(Modifier.padding(24.dp)) {
                 Text("FINANCIAL STATUS", fontWeight = FontWeight.Bold, color = Color.Gray)
@@ -158,15 +148,12 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
                 }
             }
         }
-
         Spacer(Modifier.height(20.dp))
-        
         Button(onClick = { /* History */ }, Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E))) {
-            Icon(Icons.Filled.List, null) // 🔥 FIXED ICON TO LIST
+            Icon(Icons.Filled.List, null)
             Spacer(Modifier.width(8.dp))
             Text("VIEW TRIP HISTORY")
         }
-
         Spacer(Modifier.weight(1f))
         Button(onClick = onLogout, Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("LOGOUT") }
     }
@@ -270,7 +257,7 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
                            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                                Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                    Column { Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text("${snap.child("price").value} ETB", color = Color.Blue) }
-                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to dName)) }) { Text("ACCEPT") }
+                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
                                }
                            }
                        }
