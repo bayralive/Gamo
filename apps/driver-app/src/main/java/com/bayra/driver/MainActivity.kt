@@ -47,11 +47,9 @@ data class RideJob(
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
-    private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
         setContent { MaterialTheme { DriverAppRoot() } }
     }
     fun launchNav(lat: Double, lon: Double) {
@@ -64,9 +62,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v192", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v193", Context.MODE_PRIVATE) }
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
@@ -77,21 +73,13 @@ fun DriverAppRoot() {
         Scaffold(
             bottomBar = {
                 NavigationBar(containerColor = Color.Black) {
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") },
-                        selected = currentTab == "HOME", onClick = { currentTab = "HOME" },
-                        colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
-                    )
-                    NavigationBarItem(
-                        icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") },
-                        selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" },
-                        colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
-                    )
+                    NavigationBarItem(icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") }, selected = currentTab == "HOME", onClick = { currentTab = "HOME" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
+                    NavigationBarItem(icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") }, selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
                 }
             }
         ) { p ->
             Box(Modifier.padding(p)) {
-                if (currentTab == "HOME") RadarHub(dName, activity) { isAuth = false; prefs.edit().clear().apply() }
+                if (currentTab == "HOME") RadarHub(dName) { isAuth = false; prefs.edit().clear().apply() }
                 else DriverAccountView(dName) { isAuth = false; prefs.edit().clear().apply() }
             }
         }
@@ -115,22 +103,36 @@ fun LoginScreen(onSuccess: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(value = pIn, onValueChange = { pIn = it }, label = { Text("Imperial PIN") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
         Spacer(Modifier.height(20.dp))
-        if (loading) CircularProgressIndicator() else Button(onClick = {
-            loading = true
-            FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(s: DataSnapshot) {
-                    if (s.child("password").value?.toString() == pIn) onSuccess(nIn) else Toast.makeText(ctx, "Access Denied", Toast.LENGTH_SHORT).show()
-                    loading = false
+        if (loading) CircularProgressIndicator() else {
+            Button(onClick = {
+                if (nIn.isNotEmpty() && pIn.isNotEmpty()) {
+                    loading = true
+                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(s: DataSnapshot) {
+                            if (s.child("password").value?.toString() == pIn) onSuccess(nIn) else Toast.makeText(ctx, "Access Denied", Toast.LENGTH_SHORT).show()
+                            loading = false
+                        }
+                        override fun onCancelled(e: DatabaseError) { loading = false }
+                    })
                 }
-                override fun onCancelled(e: DatabaseError) { loading = false }
-            })
-        }, Modifier.fillMaxWidth().height(60.dp)) { Text("UNLOCK") }
+            }, Modifier.fillMaxWidth().height(60.dp)) { Text("UNLOCK RADAR") }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // 🔥 RECRUITMENT BUTTON
+            TextButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))
+                ctx.startActivity(intent)
+            }) {
+                Text(text = "NEW DRIVER? JOIN OUR FLEET", color = Color(0xFF1A237E), fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, activity: MainActivity?, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
