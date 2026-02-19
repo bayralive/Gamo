@@ -45,6 +45,7 @@ import org.osmdroid.views.overlay.Marker
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
+// ... (RideJob Data Class remains same) ...
 data class RideJob(
     val id: String = "", val pName: String = "", val pPhone: String = "",
     val price: String = "0", val status: String = "IDLE", val tier: String = "",
@@ -67,9 +68,10 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAppRoot() {
+    // ... (Login Logic remains same as Phase 179)
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v179", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v180", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -97,7 +99,11 @@ fun DriverAppRoot() {
                     isVerifying = true
                     FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(s: DataSnapshot) {
-                            if (s.child("password").value?.toString() == pIn) { prefs.edit().putString("n", nIn).apply(); dName = nIn; isAuth = true } 
+                            if (s.child("password").value?.toString() == pIn) { 
+                                val phone = s.child("phone").value?.toString() ?: "" // Assuming phone is stored, otherwise blank
+                                prefs.edit().putString("n", nIn).putString("p", phone).apply()
+                                dName = nIn; dPhone = phone; isAuth = true 
+                            } 
                             else Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show()
                             isVerifying = false
                         }
@@ -116,7 +122,7 @@ fun DriverAppRoot() {
             }
         ) { padding ->
             Box(Modifier.padding(padding)) {
-                if (currentTab == "HOME") RadarHub(dName) { prefs.edit().clear().apply(); isAuth = false }
+                if (currentTab == "HOME") RadarHub(dName, dPhone) { prefs.edit().clear().apply(); isAuth = false }
                 else DriverAccountView(dName) { prefs.edit().clear().apply(); isAuth = false }
             }
         }
@@ -125,6 +131,7 @@ fun DriverAppRoot() {
 
 @Composable
 fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
+    // ... (Account View remains same as Phase 179)
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
     var debt by remember { mutableStateOf(0) }
     var credit by remember { mutableStateOf(0) }
@@ -146,8 +153,6 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
         Spacer(Modifier.height(40.dp))
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(4.dp)) {
             Column(Modifier.padding(24.dp)) {
-                Text("FINANCIAL STATUS", fontWeight = FontWeight.Bold, color = Color.Gray)
-                Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
                     Column { Text("OWED TO YOU", fontSize = 12.sp); Text("$credit ETB", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Green) }
                     Column(horizontalAlignment = Alignment.End) { Text("OWED TO EMPIRE", fontSize = 12.sp); Text("$debt ETB", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Red) }
@@ -156,7 +161,7 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
         }
         Spacer(Modifier.height(20.dp))
         Button(onClick = { /* History */ }, Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E))) {
-            Icon(Icons.Filled.List, null) // 🔥 FIXED ICON
+            Icon(Icons.Filled.List, null)
             Spacer(Modifier.width(8.dp))
             Text("VIEW TRIP HISTORY")
         }
@@ -167,7 +172,7 @@ fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, driverPhone: String, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
@@ -211,17 +216,10 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
         
         Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
             if(!isRadarOn) {
-               // 🔥 ACTIVATION SCREEN
                Surface(Modifier.fillMaxWidth().height(200.dp), shape = RoundedCornerShape(16.dp), color = Color.Black.copy(alpha=0.7f)) {
                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                       Button(onClick = { 
-                           runCatching {
-                               val intent = Intent(ctx, BeaconService::class.java)
-                               if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(intent) else ctx.startService(intent)
-                               isRadarOn = true
-                           }
-                       }, Modifier.size(120.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = Color.Green)) {
-                           Icon(Icons.Filled.PlayArrow, null, Modifier.size(60.dp)) // 🔥 FIXED ICON
+                       Button(onClick = { isRadarOn = true }, Modifier.size(120.dp), shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = Color.Green)) {
+                           Icon(Icons.Filled.PlayArrow, null, Modifier.size(60.dp))
                        }
                        Text("GO ONLINE", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top=10.dp))
                    }
@@ -237,6 +235,7 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
                if (debt - credit >= 500) {
                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red)) { Text("ACCOUNT LOCKED", Modifier.padding(20.dp), color = Color.White, fontWeight = FontWeight.Bold) }
                } else if (activeJobSnap != null) {
+                   // ... (Active Job Card Logic, same as before)
                    Card(Modifier.fillMaxWidth()) {
                        Column(Modifier.padding(20.dp)) {
                            val price = activeJobSnap!!.child("price").value?.toString() ?: "0"
@@ -264,7 +263,24 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
                            Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                                Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                                    Column { Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text("${snap.child("price").value} ETB", color = Color.Blue) }
-                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
+                                   // 🔥 ATOMIC TRANSACTION: THE RACE STOPPER
+                                   Button(onClick = { 
+                                       ref.child(snap.key!!).runTransaction(object : Transaction.Handler {
+                                           override fun doTransaction(currentData: MutableData): Transaction.Result {
+                                               val s = currentData.child("status").value.toString()
+                                               if (s == "REQUESTED") {
+                                                   currentData.child("status").value = "ACCEPTED"
+                                                   currentData.child("driverName").value = driverName
+                                                   currentData.child("dPhone").value = driverPhone
+                                                   return Transaction.success(currentData)
+                                               }
+                                               return Transaction.abort()
+                                           }
+                                           override fun onComplete(error: DatabaseError?, committed: Boolean, currentData: DataSnapshot?) {
+                                               if (!committed) Toast.makeText(ctx, "Job taken by another driver", Toast.LENGTH_SHORT).show()
+                                           }
+                                       })
+                                   }) { Text("ACCEPT") }
                                }
                            }
                        }
