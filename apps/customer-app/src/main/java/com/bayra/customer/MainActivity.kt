@@ -7,9 +7,12 @@ import android.os.*
 import android.preference.PreferenceManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,84 +20,94 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.*
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
+enum class Tier(val label: String, val base: Double, val isHr: Boolean) {
+    POOL("Pool", 80.0, false), COMFORT("Comfort", 120.0, false), 
+    CODE_3("Code 3", 280.0, false), BAJAJ_HR("Bajaj Hr", 350.0, true),
+    C3_HR("C3 Hr", 550.0, true)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+    private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        setContent { MaterialTheme { PassengerRoot() } }
+        requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        setContent { MaterialTheme { PassengerSuperApp() } }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PassengerRoot() {
+fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v187", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v188", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
+    var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
-    var currentTab by rememberSaveable { mutableStateOf("HOME") }
-    var showHistory by remember { mutableStateOf(false) }
+    
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var currentView by rememberSaveable { mutableStateOf("MAP") }
 
     if (!isAuth) {
-        LoginView { n -> pName = n; isAuth = true; prefs.edit().putString("n", n).apply() }
+        LoginView { n, e -> 
+            prefs.edit().putString("n", n).putString("e", e).apply()
+            pName = n; pEmail = e; isAuth = true 
+        }
     } else {
-        if (showHistory) {
-            PassengerHistory(pName) { showHistory = false }
-        } else {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar(containerColor = Color.White) {
-                        NavigationBarItem(icon = { Icon(Icons.Filled.Home, null) }, selected = currentTab == "HOME", onClick = { currentTab = "HOME" })
-                        NavigationBarItem(icon = { Icon(Icons.Filled.Person, null) }, selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" })
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet {
+                    Spacer(Modifier.height(12.dp))
+                    Column(Modifier.padding(16.dp)) {
+                        Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), tint = Color(0xFF1A237E))
+                        Text(pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(pEmail, fontSize = 14.sp, color = Color.Gray)
                     }
+                    Divider()
+                    NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                    NavigationDrawerItem(label = { Text("My Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
+                    NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
+                    NavigationDrawerItem(label = { Text("Promo") }, selected = currentView == "PROMO", onClick = { currentView = "PROMO"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.LocalOffer, null) })
+                    Divider()
+                    NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
+                }
+            }
+        ) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text("BAYRA TRAVEL", fontWeight = FontWeight.Black, fontSize = 18.sp) },
+                        navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null) } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                    )
                 }
             ) { p ->
                 Box(Modifier.padding(p)) {
-                    if (currentTab == "HOME") Text("Map Booking Active", Modifier.align(Alignment.Center))
-                    else AccountView(pName, onLogout = { isAuth = false; prefs.edit().clear().apply() }, onShowHistory = { showHistory = true })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PassengerHistory(name: String, onBack: () -> Unit) {
-    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
-    var history by remember { mutableStateOf(listOf<DataSnapshot>()) }
-
-    LaunchedEffect(Unit) {
-        ref.orderByChild("pName").equalTo(name).addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) {
-                history = s.children.filter { it.child("status").value == "COMPLETED" }.reversed()
-            }
-            override fun onCancelled(e: DatabaseError) {}
-        })
-    }
-
-    Column(Modifier.fillMaxSize().background(Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, null) }
-            Text("MY TRIPS", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-        }
-        LazyColumn(Modifier.padding(16.dp)) {
-            items(history) { h ->
-                Card(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                    Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) {
-                        Column {
-                            Text("To Destination", fontWeight = FontWeight.Bold)
-                            Text(h.child("tier").value?.toString() ?: "Ride", fontSize = 12.sp, color = Color.Gray)
-                        }
-                        Text("${h.child("price").value} ETB", fontWeight = FontWeight.Black)
+                    when(currentView) {
+                        "MAP" -> BookingHub(pName, prefs)
+                        "ORDERS" -> HistoryPage(pName)
+                        "NOTIF" -> NotificationPage()
+                        "PROMO" -> PromoPage()
                     }
                 }
             }
@@ -102,25 +115,86 @@ fun PassengerHistory(name: String, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountView(name: String, onLogout: () -> Unit, onShowHistory: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(40.dp))
-        Text("Account", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text(name, color = Color.Gray)
-        Spacer(Modifier.height(40.dp))
-        Button(onClick = onShowHistory, Modifier.fillMaxWidth().height(60.dp)) { Text("TRIP HISTORY") }
-        Spacer(Modifier.weight(1f))
-        Button(onClick = onLogout, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("LOGOUT") }
+fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
+    var status by remember { mutableStateOf("IDLE") }
+    var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
+    var mapRef by remember { mutableStateOf<MapView?>(null) }
+    var step by remember { mutableStateOf("PICKUP") }
+    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
+
+    LaunchedEffect(activeId) {
+        if(activeId.isNotEmpty()) {
+            FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId/status").addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) { status = s.value?.toString() ?: "IDLE" }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500)); mapRef = this } })
+        
+        if (status != "IDLE") {
+            Surface(Modifier.fillMaxSize(), color = Color.White) {
+                Column(Arrangement.Center, Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(); Text(status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
+                    Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
+                }
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text("📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(Tier.values().toList()) { t ->
+                        Surface(Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) {
+                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = { 
+                    val id = "R_${System.currentTimeMillis()}"
+                    val pt = mapRef?.mapCenter as GeoPoint
+                    FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pt.latitude, "pLon" to pt.longitude))
+                    activeId = id; prefs.edit().putString("active_id", id).apply()
+                }, Modifier.fillMaxWidth().height(60.dp)) { Text("BOOK ${selectedTier.label.uppercase()}") }
+            }
+        }
     }
 }
 
 @Composable
-fun LoginView(onLogin: (String) -> Unit) {
-    var n by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center) {
-        Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black)
+fun HistoryPage(name: String) {
+    val trips = remember { mutableStateListOf<DataSnapshot>() }
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }) }
+            override fun onCancelled(e: DatabaseError) {}
+        })
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+        item { Text("Order History", fontSize = 24.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(16.dp)) }
+        if (trips.isEmpty()) item { Box(Modifier.fillParentMaxSize(), Alignment.Center) { Text("No orders yet. History is to make!") } }
+        items(trips) { t -> Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) { Text("Trip to Center"); Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } }
+    }
+}
+
+@Composable fun NotificationPage() { Box(Modifier.fillMaxSize(), Alignment.Center) { Column(Alignment.CenterHorizontally) { Icon(Icons.Filled.Notifications, null, Modifier.size(64.dp), Color.Gray); Text("No new notifications") } } }
+@Composable fun PromoPage() { Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No active promos") } }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LoginView(onLogin: (String, String) -> Unit) {
+    var n by remember { mutableStateOf("") }; var e by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize().padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+        Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(180.dp))
+        Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
+        Spacer(Modifier.height(30.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { onLogin(n) }, Modifier.fillMaxWidth().padding(top = 20.dp)) { Text("START") }
+        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START TRAVELING") }
     }
 }
