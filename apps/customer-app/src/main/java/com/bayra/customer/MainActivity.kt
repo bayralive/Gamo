@@ -32,8 +32,9 @@ import com.google.firebase.database.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.XYTileSource
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
@@ -54,12 +55,11 @@ class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 🔥 CRITICAL: Set User Agent for OpenFreeMap Security
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraTravel_Sovereign_App"
+        Configuration.getInstance().userAgentValue = "BayraTravel_Sovereign"
         
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-        setContent { MaterialTheme { PassengerSuperApp() } }
+        setContent { PassengerSuperApp() }
     }
 }
 
@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v195", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v196", Context.MODE_PRIVATE) }
     var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -136,11 +136,12 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var step by remember { mutableStateOf("PICKUP") }
 
-    // 🔥 FIXED HIGH-DETAIL TILE SOURCE
-    val detailedTiles = XYTileSource(
-        "Liberty", 0, 19, 256, ".png", 
-        arrayOf("https://tiles.openfreemap.org/styles/liberty/")
-    )
+    // 🔥 PRESTIGE ROADMAP TILES (Detailed Arba Minch Roads)
+    val prestigeTiles = object : OnlineTileSourceBase("Roadmap", 0, 20, 256, ".png", 
+        arrayOf("https://mt1.google.com/vt/lyrs=m&")) {
+        override fun getTileURLString(p: Long): String = 
+            "$baseUrl&x=${MapTileIndex.getX(p)}&y=${MapTileIndex.getY(p)}&z=${MapTileIndex.getZoom(p)}"
+    }
 
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
@@ -154,7 +155,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { ctx -> 
             MapView(ctx).apply { 
-                setTileSource(detailedTiles)
+                setTileSource(prestigeTiles)
                 setBuiltInZoomControls(false)
                 setMultiTouchControls(true)
                 controller.setZoom(17.5)
@@ -166,15 +167,15 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
             } 
         }, update = { view ->
             view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
-            pickupPt?.let { Marker(view).apply { position = it; title = "Pickup" }.also { view.overlays.add(it) } }
-            destPt?.let { Marker(view).apply { position = it; title = "Dropoff" }.also { view.overlays.add(it) } }
+            pickupPt?.let { Marker(view).apply { position = it; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { view.overlays.add(it) } }
+            destPt?.let { Marker(view).apply { position = it; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM); icon = view.context.getDrawable(android.R.drawable.ic_menu_directions) }.also { view.overlays.add(it) } }
             view.invalidate()
         })
 
         if (status != "IDLE") {
             Surface(Modifier.fillMaxSize(), color = Color.White) {
                 Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(); Text(text = status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
+                    CircularProgressIndicator(); Text(text = status, modifier = Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
                     Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
                 }
             }
@@ -187,7 +188,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
                             selectedTier = t 
                             if(pickupPt != null) step = if(t.label.contains("Hr")) "CONFIRM" else "DEST"
                         }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
-                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
+                            Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
                         } 
                     } 
                 }
@@ -228,19 +229,19 @@ fun HistoryPage(name: String) {
 @Composable
 fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        Text(text = "Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Dark Mode")
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
+        Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text("Dark Mode")
             Switch(checked = isDarkMode, onCheckedChange = onToggle)
         }
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text(text = "Support Telegram") }
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Support Telegram") }
     }
 }
 
 @Composable
 fun AboutUsPage() {
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
         Text("Sarotethai nuna maaddo,\nAadhidatethai nuna kaaletho", fontStyle = FontStyle.Italic, color = Color.Gray)
         Spacer(modifier = Modifier.height(20.dp))
