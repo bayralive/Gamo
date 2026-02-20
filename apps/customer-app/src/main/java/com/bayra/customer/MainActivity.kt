@@ -30,13 +30,18 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.*
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.net.URL
+import java.net.HttpURLConnection
+import kotlin.concurrent.thread
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
@@ -51,6 +56,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
+        Configuration.getInstance().userAgentValue = "BayraEmpire_Customer"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         setContent { PassengerSuperApp() }
     }
@@ -60,13 +66,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v191", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v194", Context.MODE_PRIVATE) }
     var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(pName.isNotEmpty()) }
-    
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
@@ -88,13 +92,12 @@ fun PassengerSuperApp() {
                             Text(text = pEmail, fontSize = 14.sp, color = Color.Gray)
                         }
                         Divider()
-                        NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                        NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
-                        NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
-                        NavigationDrawerItem(label = { Text("Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
-                        NavigationDrawerItem(label = { Text("About Us") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
+                        NavigationDrawerItem(label = { Text(text = "Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                        NavigationDrawerItem(label = { Text(text = "Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
+                        NavigationDrawerItem(label = { Text(text = "Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
+                        NavigationDrawerItem(label = { Text(text = "About Us") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
                         Divider()
-                        NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
+                        NavigationDrawerItem(label = { Text(text = "Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                     }
                 }
             ) {
@@ -108,9 +111,8 @@ fun PassengerSuperApp() {
                 ) { p ->
                     Box(modifier = Modifier.padding(p)) {
                         when(currentView) {
-                            "MAP" -> BookingHub(pName, prefs)
+                            "MAP" -> BookingHub(pName, pEmail, prefs)
                             "ORDERS" -> HistoryPage(pName)
-                            "NOTIF" -> NotificationPage()
                             "SETTINGS" -> SettingsPage(isDarkMode) { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }
                             "ABOUT" -> AboutUsPage()
                         }
@@ -121,68 +123,23 @@ fun PassengerSuperApp() {
     }
 }
 
-@Composable
-fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
-    val ctx = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-        Text(text = "Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(20.dp))
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Settings, null) // 🔥 REPLACED Brightness6
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(text = "Dark Mode")
-            }
-            Switch(checked = isDarkMode, onCheckedChange = onToggle)
-        }
-        Divider(modifier = Modifier.padding(vertical = 16.dp))
-        Text(text = "Get in Touch", fontWeight = FontWeight.Bold, color = Color.Gray)
-        Spacer(modifier = Modifier.height(12.dp))
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) {
-            Icon(Icons.Filled.Send, null); Spacer(Modifier.width(8.dp)); Text("Telegram Support")
-        }
-    }
-}
-
-@Composable
-fun AboutUsPage() {
-    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
-        Text(text = "Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-        Text(text = "Sarotethai nuna maaddo,\nAadhidatethai nuna kaaletho", fontStyle = FontStyle.Italic, color = Color.Gray)
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(text = "የክፍያ እና የእርዳታ መመሪያ (Billing & Support)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(text = "• መነሻ ክፍያ፦ 50 ብር\n• የሌሊት ጭማሪ፦ 200 ብር\n• የጋራ ጉዞ (Pool)፦ 20% ቅናሽ\n• ባጃጅ፦ 350 ብር/ሰዓት\n• መኪና፦ 500 ብር/ሰዓት", fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(20.dp))
-        Text(text = "About Bayra", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(text = "We are the local pride of Arba Minch, dedicated to modernizing tourism and trade in the South.\n\nWisdom and Peace in Every Journey! 🕊️✨🏁", fontSize = 14.sp)
-    }
-}
-
-@Composable
-fun NotificationPage() {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = "Notifications", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(20.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "🎁", fontSize = 30.sp)
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(text = "Welcome to Bayra Travel", fontWeight = FontWeight.Bold)
-                    Text(text = "Your journey starts here.", fontSize = 12.sp, color = Color.Gray)
-                }
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
+fun BookingHub(name: String, email: String, prefs: android.content.SharedPreferences) {
     var status by remember { mutableStateOf("IDLE") }
     var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
+    var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
+    var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
+    var step by remember { mutableStateOf("PICKUP") }
+
+    val libertyTiles = object : OnlineTileSourceBase("Liberty", 0, 20, 256, ".png", 
+        arrayOf("https://tiles.openfreemap.org/styles/liberty/")) {
+        override fun getTileURLString(p: Long): String = 
+            "$baseUrl${MapTileIndex.getZoom(p)}/${MapTileIndex.getX(p)}/${MapTileIndex.getY(p)}.png"
+    }
+
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId/status").addValueEventListener(object : ValueEventListener {
@@ -191,26 +148,61 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
             })
         }
     }
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500)); mapRef = this } })
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(factory = { ctx -> 
+            MapView(ctx).apply { 
+                setTileSource(libertyTiles) 
+                setBuiltInZoomControls(false)
+                setMultiTouchControls(true)
+                controller.setZoom(17.5)
+                controller.setCenter(GeoPoint(6.0333, 37.5500))
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this)
+                loc.enableMyLocation()
+                overlays.add(loc)
+                mapRef = this 
+            } 
+        }, update = { view ->
+            view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
+            pickupPt?.let { Marker(view).apply { position = it; title = "Pickup" }.also { view.overlays.add(it) } }
+            destPt?.let { Marker(view).apply { position = it; title = "Dropoff" }.also { view.overlays.add(it) } }
+            view.invalidate()
+        })
+
         if (status != "IDLE") {
-            Surface(Modifier.fillMaxSize(), color = Color.White) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
                 Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(); Text(text = status, modifier = Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
-                    Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("CANCEL") }
+                    Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text(text = "CANCEL") }
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
+            if(step != "CONFIRM") Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
-                Spacer(Modifier.height(16.dp))
-                Button(onClick = { 
-                    val id = "R_${System.currentTimeMillis()}"
-                    val pt = mapRef?.mapCenter as GeoPoint
-                    FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pt.latitude, "pLon" to pt.longitude, "tier" to selectedTier.label))
-                    activeId = id; prefs.edit().putString("active_id", id).apply()
-                }, Modifier.fillMaxWidth().height(60.dp)) { Text(text = "BOOK ${selectedTier.label.uppercase()}") }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
+                    items(Tier.values().toList()) { t -> 
+                        Surface(modifier = Modifier.clickable { 
+                            selectedTier = t 
+                            if(pickupPt != null) step = if(t.label.contains("Hr")) "CONFIRM" else "DEST"
+                        }, color = if(selectedTier == t) Color(0xFF1A237E) else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
+                            Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
+                        } 
+                    } 
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                if (step == "PICKUP") {
+                    Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.label.contains("Hr")) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET PICKUP", fontWeight = FontWeight.Bold) }
+                } else if (step == "DEST") {
+                    Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "SET DESTINATION", fontWeight = FontWeight.Bold) }
+                } else {
+                    Button(onClick = { 
+                        val id = "R_${System.currentTimeMillis()}"
+                        val pt = mapRef?.mapCenter as GeoPoint
+                        FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label))
+                        activeId = id; prefs.edit().putString("active_id", id).apply()
+                    }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text(text = "BOOK ${selectedTier.label.uppercase()}") }
+                    TextButton(onClick = { step = "PICKUP"; pickupPt = null; destPt = null }, modifier = Modifier.fillMaxWidth()) { Text(text = "Reset Points") }
+                }
             }
         }
     }
@@ -231,6 +223,30 @@ fun HistoryPage(name: String) {
     }
 }
 
+@Composable
+fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
+    val ctx = LocalContext.current
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+        Text(text = "Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "Dark Mode")
+            Switch(checked = isDarkMode, onCheckedChange = onToggle)
+        }
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text(text = "Support Telegram") }
+    }
+}
+
+@Composable
+fun AboutUsPage() {
+    Column(modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
+        Text(text = "Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
+        Text(text = "Sarotethai nuna maaddo,\nAadhidatethai nuna kaaletho", fontStyle = FontStyle.Italic, color = Color.Gray)
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(text = "የክፍያ እና የእርዳታ መመሪያ", fontWeight = FontWeight.Bold)
+        Text(text = "መነሻ ክፍያ፦ 50 ብር\nየሌሊት ጭማሪ፦ 200 ብር\nባጃጅ፦ 350 ብር/ሰዓት\nመኪና፦ 500 ብር/ሰዓት", fontSize = 14.sp)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginView(onLogin: (String, String) -> Unit) {
@@ -239,8 +255,8 @@ fun LoginView(onLogin: (String, String) -> Unit) {
         Image(painter = painterResource(id = R.drawable.logo_passenger), contentDescription = null, modifier = Modifier.size(180.dp))
         Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
         Spacer(modifier = Modifier.height(30.dp))
-        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text("START") }
+        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text(text = "Name") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text(text = "Email") }, modifier = Modifier.fillMaxWidth())
+        Button(onClick = { if(n.isNotEmpty() && e.contains("@")) onLogin(n, e) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp)) { Text(text = "START") }
     }
 }
