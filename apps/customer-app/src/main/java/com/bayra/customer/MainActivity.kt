@@ -37,10 +37,18 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.net.URL
+import java.net.HttpURLConnection
+import java.net.URLEncoder
+import kotlin.concurrent.thread
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(0xFF1A237E)
 val IMPERIAL_RED = Color(0xFFD50000)
+
+// 🔥 THE CALIBRATED SCOUT CONFIG
+const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
+const val CHAT_ID = "5232430147"
 
 enum class Tier(val label: String, val base: Double) {
     POOL("Pool", 80.0), COMFORT("Comfort", 120.0), CODE_3("Code 3", 280.0), 
@@ -62,12 +70,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v203", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v204", Context.MODE_PRIVATE) }
     
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
-    var isVerifying by remember { mutableStateOf(false) }
+    var isVerifying by rememberSaveable { mutableStateOf(false) }
     
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -77,8 +85,22 @@ fun PassengerSuperApp() {
         if (!isVerifying) {
             LoginView(pName, pPhone) { n, p -> 
                 pName = n; pPhone = p; isVerifying = true 
+                
+                // 1. Write to Registry (Firebase)
                 FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p)
                     .setValue(mapOf("name" to n, "status" to "WAITING", "time" to System.currentTimeMillis()))
+                
+                // 2. 🔥 THE SCOUT: Signal the Director via Telegram
+                thread {
+                    try {
+                        val message = "🚨 BAYRA ACCESS REQUEST\n━━━━━━━━━━━━━━━\n👤 Name: $n\n📞 Phone: $p\n⏱ Status: WAITING FOR CODE"
+                        val encodedMsg = URLEncoder.encode(message, "UTF-8")
+                        val url = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg"
+                        val conn = URL(url).openConnection() as HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.inputStream.bufferedReader().readText()
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
             }
         } else {
             VerificationView(pPhone) { code ->
@@ -86,7 +108,7 @@ fun PassengerSuperApp() {
                     prefs.edit().putString("n", pName).putString("p", pPhone).putBoolean("auth", true).apply()
                     isAuth = true; isVerifying = false
                 } else {
-                    Toast.makeText(ctx, "Incorrect Code", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Invalid Code", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -102,7 +124,7 @@ fun PassengerSuperApp() {
                     }
                     Divider()
                     NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                    NavigationDrawerItem(label = { Text("My Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
+                    NavigationDrawerItem(label = { Text("Trip History") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                     Divider()
                     NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                 }
@@ -128,50 +150,21 @@ fun PassengerSuperApp() {
 @Composable
 fun VerificationView(phone: String, onVerify: (String) -> Unit) {
     var code by remember { mutableStateOf("") }
-    var timeLeft by remember { mutableStateOf(600) } // 10 minutes in seconds
+    var timeLeft by remember { mutableStateOf(600) }
 
     LaunchedEffect(key1 = timeLeft) {
-        if (timeLeft > 0) {
-            delay(1000L)
-            timeLeft--
-        }
+        if (timeLeft > 0) { delay(1000L); timeLeft-- }
     }
 
-    val minutes = timeLeft / 60
-    val seconds = timeLeft % 60
-    val timerText = String.format("%02d:%02d", minutes, seconds)
-
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        Text(text = "VERIFYING NUMBER", fontSize = 24.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text(text = "Sent to $phone", color = Color.Gray)
-        
+        Text(text = "VERIFYING", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "Request sent for $phone", color = Color.Gray)
         Spacer(Modifier.height(40.dp))
-        
-        Text(
-            text = timerText,
-            fontSize = 48.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = if (timeLeft < 60) IMPERIAL_RED else Color.Black
-        )
-        Text(text = "remaining to enter code", fontSize = 12.sp, color = Color.Gray)
-
+        Text(text = String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if (timeLeft < 60) IMPERIAL_RED else Color.Black)
         Spacer(Modifier.height(40.dp))
-        
-        OutlinedTextField(
-            value = code, 
-            onValueChange = { if(it.length <= 4) code = it }, 
-            label = { Text("4-Digit Code") }, 
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
-        
-        Button(
-            onClick = { onVerify(code) }, 
-            Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), 
-            colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(text = "VALIDATE ACCESS", color = Color.White, fontWeight = FontWeight.Bold)
+        OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) {
+            Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -181,19 +174,14 @@ fun VerificationView(phone: String, onVerify: (String) -> Unit) {
 fun LoginView(name: String, phone: String, onLogin: (String, String) -> Unit) {
     var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(200.dp))
-        Text(text = "BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(180.dp))
+        Text("BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Spacer(Modifier.height(30.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number (+251...)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Button(
-            onClick = { if(n.length > 2 && p.length > 8) onLogin(n, p) }, 
-            modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 32.dp), 
-            colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
-            shape = RoundedCornerShape(16.dp)
-        ) { 
-            Text(text = "REQUEST ACCESS CODE", color = Color.White, fontWeight = FontWeight.Bold) 
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Button(onClick = { if(n.length > 2) onLogin(n, p) }, Modifier.fillMaxWidth().height(65.dp).padding(top = 32.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) { 
+            Text("REQUEST ACCESS CODE", fontWeight = FontWeight.Bold) 
         }
     }
 }
@@ -205,7 +193,6 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
     var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
-    
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId/status").addValueEventListener(object : ValueEventListener {
@@ -214,7 +201,6 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
             })
         }
     }
-
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { ctx -> MapView(ctx).apply { setTileSource(TileSourceFactory.MAPNIK); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500)); setBuiltInZoomControls(false); setMultiTouchControls(true); val loc = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this); loc.enableMyLocation(); overlays.add(loc); mapRef = this } })
         if (status != "IDLE") {
@@ -225,16 +211,10 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text("📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
-                    items(Tier.values().toList()) { t -> 
-                        Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
-                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
-                        } 
-                    } 
-                }
-                Spacer(modifier = Modifier.height(16.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
+                Spacer(Modifier.height(16.dp))
                 Button(onClick = { 
                     val id = "R_${System.currentTimeMillis()}"
                     val pt = mapRef?.mapCenter as GeoPoint
