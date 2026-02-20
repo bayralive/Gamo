@@ -12,7 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,7 +22,6 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
@@ -31,7 +29,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.google.firebase.database.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
@@ -62,9 +59,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraTravel_V208"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-        setContent { MaterialTheme(colorScheme = lightColorScheme(primary = IMPERIAL_BLUE)) { PassengerSuperApp() } }
+        setContent { 
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+                MaterialTheme(colorScheme = lightColorScheme(primary = IMPERIAL_BLUE)) { 
+                    PassengerSuperApp() 
+                } 
+            }
+        }
     }
 }
 
@@ -72,12 +74,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v208", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v209", Context.MODE_PRIVATE) }
+    
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
-    var isVerifying by rememberSaveable { mutableStateOf(false) }
+    var isVerifying by remember { mutableStateOf(prefs.getBoolean("is_verifying", false)) }
+    
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
@@ -85,27 +89,32 @@ fun PassengerSuperApp() {
     if (!isAuth) {
         if (!isVerifying) {
             LoginView(pName, pPhone, pEmail) { n, p, e -> 
+                val startTime = System.currentTimeMillis()
+                prefs.edit().putString("n", n).putString("p", p).putString("e", e)
+                    .putBoolean("is_verifying", true).putLong("verify_start", startTime).apply()
                 pName = n; pPhone = p; pEmail = e; isVerifying = true 
+                
                 val uniquePin = (1000..9999).random().toString()
                 FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p)
-                    .setValue(mapOf("name" to n, "email" to e, "status" to "WAITING", "code" to uniquePin, "time" to System.currentTimeMillis()))
+                    .setValue(mapOf("name" to n, "status" to "WAITING", "code" to uniquePin, "time" to startTime))
+                
                 thread {
                     try {
-                        val msg = "🚨 BAYRA ACCESS REQUEST\n━━━━━━━━━━━━━━━\n👤 Name: $n\n📞 Phone: $p\n📧 Email: $e\n🗝️ CODE: $uniquePin"
+                        val msg = "🚨 ACCESS REQUEST\n👤 Name: $n\n📞 Phone: $p\n🗝️ CODE: $uniquePin"
                         val url = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
                         URL(url).openConnection().apply { (this as HttpURLConnection).requestMethod = "GET" }.inputStream.bufferedReader().readText()
                     } catch (ex: Exception) {}
                 }
             }
         } else {
-            VerificationView(pPhone) { code ->
+            VerificationView(pPhone, prefs) { code ->
                 FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code")
                     .addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(s: DataSnapshot) {
                             if (s.value?.toString() == code) {
-                                prefs.edit().putString("n", pName).putString("p", pPhone).putString("e", pEmail).putBoolean("auth", true).apply()
+                                prefs.edit().putBoolean("auth", true).putBoolean("is_verifying", false).apply()
                                 isAuth = true; isVerifying = false
-                            } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
+                            } else { Toast.makeText(ctx, "Incorrect Code", Toast.LENGTH_SHORT).show() }
                         }
                         override fun onCancelled(e: DatabaseError) {}
                     })
@@ -123,8 +132,6 @@ fun PassengerSuperApp() {
                     }
                     Divider()
                     NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                    NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
-                    Divider()
                     NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                 }
             }
@@ -144,40 +151,57 @@ fun PassengerSuperApp() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
-    var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Image(painter = painterResource(id = R.drawable.logo_passenger), contentDescription = null, modifier = Modifier.size(160.dp).padding(bottom = 16.dp))
-        Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text(text = "Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 32.dp))
-        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true)
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true)
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email (for online payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true)
+fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String) -> Unit) {
+    val startTime = prefs.getLong("verify_start", System.currentTimeMillis())
+    var timeLeft by remember { mutableStateOf(0L) }
+    var code by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000
+            timeLeft = (600 - elapsed).coerceAtLeast(0)
+            if (timeLeft <= 0) break
+            delay(1000L)
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+        Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(120.dp))
+        Text(text = "VERIFICATION", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "A 4-digit code will be sent to your phone.", fontSize = 14.sp, color = Color.Gray, textAlign = TextAlign.Center)
+        
         Spacer(Modifier.height(40.dp))
-        Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) {
-            Text(text = "LOGIN", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, letterSpacing = 2.sp)
+        val min = timeLeft / 60
+        val sec = timeLeft % 60
+        Text(text = String.format("%02d:%02d", min, sec), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black)
+        
+        Spacer(Modifier.height(40.dp))
+        OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold)
+        }
+        if (timeLeft <= 0) {
+            TextButton(onClick = { /* Reset Logic */ }) { Text("RESEND CODE", color = IMPERIAL_RED) }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VerificationView(phone: String, onVerify: (String) -> Unit) {
-    var code by remember { mutableStateOf("") }
-    var timeLeft by remember { mutableStateOf(600) }
-    LaunchedEffect(key1 = timeLeft) { if (timeLeft > 0) { delay(1000L); timeLeft-- } }
-    Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        Image(painter = painterResource(id = R.drawable.logo_passenger), contentDescription = null, modifier = Modifier.size(120.dp).padding(bottom = 24.dp))
-        Text(text = "VERIFICATION", fontSize = 24.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text(text = "A 4-digit code will be sent to your phone.", fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
+    var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
+    Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Image(painter = painterResource(id = R.drawable.logo_passenger), null, modifier = Modifier.size(160.dp))
+        Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
+        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email (for online payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(Modifier.height(40.dp))
-        Text(text = String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black)
-        Spacer(Modifier.height(40.dp))
-        OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) {
-            Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Button(onClick = { if(n.length > 2 && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) {
+            Text(text = "LOGIN", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
         }
     }
 }
