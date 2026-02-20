@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraPrestige_v213"
+        Configuration.getInstance().userAgentValue = "BayraTravel_V214"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         setContent { PassengerSuperApp() }
     }
@@ -79,8 +79,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v213", Context.MODE_PRIVATE) }
-    var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v214", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
@@ -90,8 +89,8 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
-    MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme() else lightColorScheme(primary = IMPERIAL_BLUE)) {
-        Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+        MaterialTheme(colorScheme = lightColorScheme(primary = IMPERIAL_BLUE)) {
             if (!isAuth) {
                 if (!isVerifying) {
                     LoginView(pName, pPhone, pEmail) { n, p, e -> 
@@ -107,7 +106,7 @@ fun PassengerSuperApp() {
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.value?.toString() == code) { prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply(); isAuth = true; isVerifying = false }
-                                else Toast.makeText(ctx, "Invalid Code", Toast.LENGTH_SHORT).show()
+                                else Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show()
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
@@ -127,6 +126,7 @@ fun PassengerSuperApp() {
                             NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
                             NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                             NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
+                            Divider()
                             NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                         }
                     }
@@ -153,15 +153,12 @@ fun BookingHub(name: String, email: String, prefs: SharedPreferences) {
     var status by remember { mutableStateOf("IDLE") }
     var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
-    
-    // 🔥 PERSISTENT ANCHORS
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var step by remember { mutableStateOf("PICKUP") }
     var hrCount by remember { mutableStateOf(1) }
 
-    // 💧 THE BLACK WATER DROP PIN
     val blackDropIcon = remember {
         val size = 120
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -208,15 +205,13 @@ fun BookingHub(name: String, email: String, prefs: SharedPreferences) {
         if (status != "IDLE") {
             Surface(Modifier.fillMaxSize(), color = Color.White) { Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(text = status, Modifier.padding(20.dp)); Button(onClick = { status = "IDLE"; activeId = "" }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL") } } }
         } else {
-            if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { Text("💧", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp)) }
+            if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { Text("📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(Tier.values().toList()) { t -> 
                         Surface(modifier = Modifier.clickable { 
                             selectedTier = t 
-                            // 🔥 PERSISTENCE: Check if we can jump to confirm
-                            if (t.isHr && pickupPt != null) step = "CONFIRM"
-                            else if (!t.isHr && pickupPt != null && destPt != null) step = "CONFIRM"
+                            if (pickupPt != null && (t.isHr || destPt != null)) step = "CONFIRM"
                             else if (pickupPt != null) step = "DEST"
                             else step = "PICKUP"
                         }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
@@ -224,17 +219,16 @@ fun BookingHub(name: String, email: String, prefs: SharedPreferences) {
                         } 
                     } 
                 }
-                
                 Spacer(Modifier.height(16.dp))
 
-                // 🔥 HOURLY SELECTION FOR CONTRAT
+                // 🔥 HARDENED HOURLY SELECTOR (Using Text symbols instead of missing icons)
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Icon(Icons.Filled.Remove, null) }
+                            IconButton(onClick = { if(hrCount > 1) hrCount-- }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                             Text("$hrCount HR", fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp))
-                            IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Icon(Icons.Filled.Add, null) }
+                            IconButton(onClick = { if(hrCount < 12) hrCount++ }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 }
@@ -246,7 +240,7 @@ fun BookingHub(name: String, email: String, prefs: SharedPreferences) {
                 } else {
                     val fare = if(selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt() else (selectedTier.base * 2.5 * 1.15).toInt()
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Text("$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.Red)
+                        Text("$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED)
                         TextButton(onClick = { step = "PICKUP"; pickupPt = null; destPt = null }) { Text("Reset") }
                     }
                     Button(onClick = { 
