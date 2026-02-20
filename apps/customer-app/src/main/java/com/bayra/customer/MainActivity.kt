@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraTravel_Elite"
+        Configuration.getInstance().userAgentValue = "BayraTravel_Prestige"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         setContent { MaterialTheme(colorScheme = lightColorScheme(primary = IMPERIAL_BLUE)) { PassengerSuperApp() } }
     }
@@ -72,15 +72,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v206", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v207", Context.MODE_PRIVATE) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
     var isVerifying by rememberSaveable { mutableStateOf(false) }
-    
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
@@ -93,8 +90,8 @@ fun PassengerSuperApp() {
                     .setValue(mapOf("name" to n, "email" to e, "status" to "WAITING", "code" to uniquePin, "time" to System.currentTimeMillis()))
                 thread {
                     try {
-                        val message = "🚨 BAYRA ACCESS REQUEST\n━━━━━━━━━━━━━━━\n👤 Name: $n\n📞 Phone: $p\n📧 Email: $e\n🗝️ GIVE CODE: $uniquePin"
-                        val url = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(message, "UTF-8")}"
+                        val msg = "🚨 BAYRA ACCESS REQUEST\n━━━━━━━━━━━━━━━\n👤 Name: $n\n📞 Phone: $p\n📧 Email: $e\n🗝️ CODE: $uniquePin"
+                        val url = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
                         URL(url).openConnection().apply { (this as HttpURLConnection).requestMethod = "GET" }.inputStream.bufferedReader().readText()
                     } catch (ex: Exception) {}
                 }
@@ -107,13 +104,15 @@ fun PassengerSuperApp() {
                             if (s.value?.toString() == code) {
                                 prefs.edit().putString("n", pName).putString("p", pPhone).putString("e", pEmail).putBoolean("auth", true).apply()
                                 isAuth = true; isVerifying = false
-                            } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
+                            } else { Toast.makeText(ctx, "Invalid Code", Toast.LENGTH_SHORT).show() }
                         }
                         override fun onCancelled(e: DatabaseError) {}
                     })
             }
         }
     } else {
+        // Super-App Scaffold
+        val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -124,8 +123,8 @@ fun PassengerSuperApp() {
                         Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
                     }
                     Divider()
-                    NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                    NavigationDrawerItem(label = { Text("My Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
+                    NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                    NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                     Divider()
                     NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                 }
@@ -133,16 +132,73 @@ fun PassengerSuperApp() {
         ) {
             Scaffold(
                 topBar = {
-                    TopAppBar(
-                        title = { Text(text = "BAYRA TRAVEL", fontWeight = FontWeight.Black, color = IMPERIAL_BLUE) },
-                        navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = IMPERIAL_BLUE) } }
-                    )
+                    TopAppBar(title = { Text(text = "BAYRA TRAVEL", fontWeight = FontWeight.Black, color = IMPERIAL_BLUE) }, navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = IMPERIAL_BLUE) } })
                 }
-            ) { p ->
-                Box(modifier = Modifier.padding(p)) {
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding)) {
                     if (currentView == "MAP") BookingHub(pName, pEmail, prefs) else HistoryPage(pName)
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
+    var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
+    
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.logo_passenger),
+            contentDescription = null,
+            modifier = Modifier.size(160.dp).padding(bottom = 16.dp)
+        )
+        
+        Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "A 4-digit code will be sent to your phone.", fontSize = 13.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 32.dp))
+
+        OutlinedTextField(
+            value = n, onValueChange = { n = it },
+            label = { Text("Full Name") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = p, onValueChange = { p = it },
+            label = { Text("Phone Number") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = e, onValueChange = { e = it },
+            label = { Text("Email (for online payment)") }, // 🔥 UPDATED LABEL
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        Button(
+            onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, 
+            modifier = Modifier.fillMaxWidth().height(65.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(text = "LOGIN", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, letterSpacing = 2.sp) // 🔥 UPDATED TEXT
         }
     }
 }
@@ -154,38 +210,15 @@ fun VerificationView(phone: String, onVerify: (String) -> Unit) {
     var timeLeft by remember { mutableStateOf(600) }
     LaunchedEffect(key1 = timeLeft) { if (timeLeft > 0) { delay(1000L); timeLeft-- } }
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        Text(text = "VERIFYING", fontSize = 24.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text(text = "Sent to $phone", color = Color.Gray)
+        Text(text = "VERIFICATION", fontSize = 24.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "Request sent for $phone", color = Color.Gray)
         Spacer(Modifier.height(40.dp))
         Text(text = String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black)
         Spacer(Modifier.height(40.dp))
-        OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter the Code") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) {
+        OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) {
             Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold)
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
-    var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
-    Column(modifier = Modifier.fillMaxSize().padding(32.dp).background(Color.White).verticalScroll(rememberScrollState()), Arrangement.Center, Alignment.CenterHorizontally) {
-        Image(painter = painterResource(id = R.drawable.logo_passenger), contentDescription = null, modifier = Modifier.size(200.dp))
-        Text(text = "BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text(text = "A 4-digit code will be sent to your phone.", fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
-        Spacer(modifier = Modifier.height(30.dp))
-        OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(10.dp))
-        OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(10.dp))
-        OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email (for Chapa Pay)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Button(
-            onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, 
-            modifier = Modifier.fillMaxWidth().height(65.dp).padding(top = 24.dp), 
-            colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
-            shape = RoundedCornerShape(16.dp)
-        ) { Text(text = "LOGIN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp) }
     }
 }
 
@@ -200,8 +233,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var step by remember { mutableStateOf("PICKUP") }
 
-    // 🔥 PRESTIGE ROADMAP TILES RE-INTEGRATED
-    val prestigeTiles = object : OnlineTileSourceBase("Roadmap", 0, 20, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m&")) {
+    val prestigeTiles = object : OnlineTileSourceBase("Prestige", 0, 20, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m&")) {
         override fun getTileURLString(p: Long): String = "$baseUrl&x=${MapTileIndex.getX(p)}&y=${MapTileIndex.getY(p)}&z=${MapTileIndex.getZoom(p)}"
     }
 
@@ -220,8 +252,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
                 setTileSource(prestigeTiles) 
                 setBuiltInZoomControls(false); setMultiTouchControls(true)
                 controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                val loc = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this); loc.enableMyLocation(); overlays.add(loc)
-                mapRef = this 
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this); loc.enableMyLocation(); overlays.add(loc); mapRef = this 
             } 
         }, update = { view ->
             view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
@@ -241,7 +272,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
             if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { selectedTier = t; if(pickupPt != null) step = if(t.label.contains("Hr")) "CONFIRM" else "DEST" }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
-                Spacer(Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 if (step == "PICKUP") Button(onClick = { pickupPt = mapRef?.mapCenter as GeoPoint; step = if(selectedTier.label.contains("Hr")) "CONFIRM" else "DEST" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET PICKUP", fontWeight = FontWeight.Bold) }
                 else if (step == "DEST") Button(onClick = { destPt = mapRef?.mapCenter as GeoPoint; step = "CONFIRM" }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
                 else {
@@ -250,7 +281,7 @@ fun BookingHub(name: String, email: String, prefs: android.content.SharedPrefere
                         val pt = mapRef?.mapCenter as GeoPoint
                         FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "pay" to "CASH"))
                         activeId = id; prefs.edit().putString("active_id", id).apply()
-                    }, Modifier.fillMaxWidth().height(60.dp)) { Text("BOOK ${selectedTier.label.uppercase()}", fontWeight = FontWeight.Bold) }
+                    }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) { Text("BOOK ${selectedTier.label.uppercase()}", fontWeight = FontWeight.Bold) }
                     TextButton(onClick = { step = "PICKUP"; pickupPt = null; destPt = null }, Modifier.fillMaxWidth()) { Text("Reset Points", color = IMPERIAL_BLUE) }
                 }
             }
