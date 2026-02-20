@@ -5,6 +5,7 @@ import android.content.*
 import android.net.Uri
 import android.os.*
 import android.preference.PreferenceManager
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,8 +30,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.google.firebase.database.*
-import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -38,12 +39,6 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
-
-data class RideJob(
-    val id: String = "", val pName: String = "", val pPhone: String = "",
-    val price: String = "0", val status: String = "IDLE", val tier: String = "",
-    val pLat: Double = 0.0, val pLon: Double = 0.0, val dLat: Double = 0.0, val dLon: Double = 0.0
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -62,25 +57,40 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v193", Context.MODE_PRIVATE) }
+    val activity = ctx as? MainActivity
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v197", Context.MODE_PRIVATE) }
+    
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
+    var showHistory by remember { mutableStateOf(false) }
 
     if (!isAuth) {
         LoginScreen { n -> dName = n; isAuth = true; prefs.edit().putString("n", n).apply() }
     } else {
-        Scaffold(
-            bottomBar = {
-                NavigationBar(containerColor = Color.Black) {
-                    NavigationBarItem(icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") }, selected = currentTab == "HOME", onClick = { currentTab = "HOME" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
-                    NavigationBarItem(icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") }, selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
+        if (showHistory) {
+            HistoryPage(dName) { showHistory = false }
+        } else {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar(containerColor = Color.Black) {
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") },
+                            selected = currentTab == "HOME", onClick = { currentTab = "HOME" },
+                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
+                        )
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") },
+                            selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" },
+                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
+                        )
+                    }
                 }
-            }
-        ) { p ->
-            Box(Modifier.padding(p)) {
-                if (currentTab == "HOME") RadarHub(dName) { isAuth = false; prefs.edit().clear().apply() }
-                else DriverAccountView(dName) { isAuth = false; prefs.edit().clear().apply() }
+            ) { p ->
+                Box(Modifier.padding(p)) {
+                    if (currentTab == "HOME") RadarHub(dName) { isAuth = false; prefs.edit().clear().apply() }
+                    else DriverAccountView(dName, onHistory = { showHistory = true }) { isAuth = false; prefs.edit().clear().apply() }
+                }
             }
         }
     }
@@ -103,30 +113,110 @@ fun LoginScreen(onSuccess: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(value = pIn, onValueChange = { pIn = it }, label = { Text("Imperial PIN") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
         Spacer(Modifier.height(20.dp))
-        if (loading) CircularProgressIndicator() else {
-            Button(onClick = {
-                if (nIn.isNotEmpty() && pIn.isNotEmpty()) {
-                    loading = true
-                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
-                        override fun onDataChange(s: DataSnapshot) {
-                            if (s.child("password").value?.toString() == pIn) onSuccess(nIn) else Toast.makeText(ctx, "Access Denied", Toast.LENGTH_SHORT).show()
-                            loading = false
-                        }
-                        override fun onCancelled(e: DatabaseError) { loading = false }
-                    })
+        if (loading) CircularProgressIndicator() else Button(onClick = {
+            loading = true
+            FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    if (s.child("password").value?.toString() == pIn) onSuccess(nIn) else Toast.makeText(ctx, "Access Denied", Toast.LENGTH_SHORT).show()
+                    loading = false
                 }
-            }, Modifier.fillMaxWidth().height(60.dp)) { Text("UNLOCK RADAR") }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // 🔥 RECRUITMENT BUTTON
-            TextButton(onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))
-                ctx.startActivity(intent)
-            }) {
-                Text(text = "NEW DRIVER? JOIN OUR FLEET", color = Color(0xFF1A237E), fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                override fun onCancelled(e: DatabaseError) { loading = false }
+            })
+        }, Modifier.fillMaxWidth().height(60.dp)) { Text("UNLOCK") }
+    }
+}
+
+@Composable
+fun HistoryPage(driverName: String, onBack: () -> Unit) {
+    val trips = remember { mutableStateListOf<DataSnapshot>() }
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("driverName").equalTo(driverName).addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                trips.clear()
+                trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }.reversed())
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        })
+    }
+
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, null) }
+            Text("TRIP HISTORY", fontSize = 20.sp, fontWeight = FontWeight.Black)
+        }
+        LazyColumn(Modifier.padding(16.dp)) {
+            items(trips) { t ->
+                Card(Modifier.fillMaxWidth().padding(bottom = 12.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) {
+                    Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Column {
+                            Text(text = "Passenger: ${t.child("pName").value}", fontWeight = FontWeight.Bold)
+                            Text(text = t.child("tier").value?.toString() ?: "Ride", fontSize = 12.sp, color = Color.Gray)
+                        }
+                        Text(text = "${t.child("price").value} ETB", fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
+                    }
+                }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DriverAccountView(driverName: String, onHistory: () -> Unit, onLogout: () -> Unit) {
+    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
+    var debt by remember { mutableStateOf(0) }
+    var credit by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        ref.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                debt = s.child("debt").value?.toString()?.toInt() ?: 0
+                credit = s.child("credit").value?.toString()?.toInt() ?: 0
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        })
+    }
+
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(40.dp))
+        Icon(Icons.Filled.Person, null, Modifier.size(100.dp), tint = Color.LightGray)
+        Text(text = driverName, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        
+        Spacer(Modifier.height(40.dp))
+        
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(4.dp)) {
+            Column(Modifier.padding(24.dp)) {
+                Text("FINANCIAL STATUS", fontWeight = FontWeight.Bold, color = Color.Gray)
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Column { Text("OWED TO YOU", fontSize = 12.sp); Text("$credit ETB", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Green) }
+                    Column(horizontalAlignment = Alignment.End) { Text("OWED TO EMPIRE", fontSize = 12.sp); Text("$debt ETB", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Red) }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(30.dp))
+
+        // 🔥 RESTORED HISTORY BUTTON
+        Button(
+            onClick = onHistory,
+            modifier = Modifier.fillMaxWidth().height(60.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Filled.List, null)
+            Spacer(Modifier.width(12.dp))
+            Text("VIEW TRIP HISTORY", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(Modifier.weight(1f))
+        
+        Button(
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth().height(55.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("LOGOUT") }
     }
 }
 
@@ -135,19 +225,11 @@ fun LoginScreen(onSuccess: (String) -> Unit) {
 fun RadarHub(driverName: String, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
-    val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
-
     var jobs by remember { mutableStateOf(listOf<DataSnapshot>()) }
     var activeJobSnap by remember { mutableStateOf<DataSnapshot?>(null) }
-    var debt by remember { mutableStateOf(0) }
-    var credit by remember { mutableStateOf(0) }
     var isRadarOn by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        driverRef.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) { debt = s.child("debt").value?.toString()?.toInt()?:0; credit = s.child("credit").value?.toString()?.toInt()?:0 }
-            override fun onCancelled(e: DatabaseError) {}
-        })
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 val list = mutableListOf<DataSnapshot>()
@@ -164,12 +246,7 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { c -> MapView(c).apply { setTileSource(TileSourceFactory.MAPNIK); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(15.5); controller.setCenter(GeoPoint(6.0333, 37.5500)) } }, update = { view ->
-            view.overlays.clear()
-            activeJobSnap?.let { job -> Marker(view).apply { position = GeoPoint(job.child("pLat").value.toString().toDouble(), job.child("pLon").value.toString().toDouble()); title = "Job" }.also { view.overlays.add(it) } }
-            ?: jobs.forEach { job -> Marker(view).apply { position = GeoPoint(job.child("pLat").value.toString().toDouble(), job.child("pLon").value.toString().toDouble()); title = "Req" }.also { view.overlays.add(it) } }
-            view.invalidate()
-        })
+        AndroidView(factory = { c -> MapView(c).apply { setTileSource(TileSourceFactory.MAPNIK); setMultiTouchControls(true); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } })
         
         Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
             if(!isRadarOn) {
@@ -177,78 +254,32 @@ fun RadarHub(driverName: String, onLogout: () -> Unit) {
             } else {
                Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
                     Row(Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Text("RADAR ONLINE", color = Color.Green, fontWeight = FontWeight.Bold)
-                        Button(onClick = { isRadarOn = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("STOP") }
+                        Text("RADAR ONLINE", color = Color.Green, fontWeight = FontWeight.Bold); Button(onClick = { isRadarOn = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("STOP") }
                     }
                }
-               
-               if (debt - credit >= 500) {
-                   Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red)) { Text("ACCOUNT LOCKED", Modifier.padding(20.dp), color = Color.White, fontWeight = FontWeight.Bold) }
-               } else if (activeJobSnap != null) {
+               activeJobSnap?.let { job ->
                    Card(Modifier.fillMaxWidth()) {
                        Column(Modifier.padding(20.dp)) {
-                           val price = activeJobSnap!!.child("price").value?.toString() ?: "0"
-                           Text("$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                           val status = activeJobSnap!!.child("status").value?.toString() ?: ""
-                           if (status.startsWith("PAID_")) {
-                               Text("PAYMENT RECEIVED!", color = Color.Green, fontWeight = FontWeight.Bold)
-                               Button(onClick = {
-                                   val p = price.replace("[^0-9]".toRegex(), "").toInt()
-                                   if (status == "PAID_CHAPA") driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
-                                   else driverRef.child("debt").setValue(debt + (p * 0.15).toInt())
-                                   ref.child(activeJobSnap!!.key!!).child("status").setValue("COMPLETED")
-                               }, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("CLOSE RIDE") }
-                           } else {
-                               val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
-                               Button(onClick = { ref.child(activeJobSnap!!.key!!).child("status").setValue(next) }, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text(if(next == "ARRIVED_DEST") "ARRIVED AT DESTINATION" else next) }
-                           }
+                           Text("${job.child("price").value} ETB", fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                           val status = job.child("status").value.toString()
+                           val label = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "FINISH" }
+                           Button(onClick = { 
+                               val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "COMPLETED" }
+                               ref.child(job.key!!).child("status").setValue(next) 
+                           }, Modifier.fillMaxWidth().height(55.dp)) { Text(label) }
                        }
                    }
-               } else {
-                   LazyColumn(Modifier.heightIn(max = 200.dp)) {
-                       items(jobs) { snap ->
-                           Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                               Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                                   Column { Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text("${snap.child("price").value} ETB") }
-                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
-                               }
+               } ?: LazyColumn(Modifier.heightIn(max = 200.dp)) {
+                   items(jobs) { snap ->
+                       Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                           Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) {
+                               Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold)
+                               Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
                            }
                        }
                    }
                }
             }
         }
-    }
-}
-
-@Composable
-fun DriverAccountView(driverName: String, onLogout: () -> Unit) {
-    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
-    var debt by remember { mutableStateOf(0) }
-    var credit by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
-        ref.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) {
-                debt = s.child("debt").value?.toString()?.toInt()?:0
-                credit = s.child("credit").value?.toString()?.toInt()?:0
-            }
-            override fun onCancelled(e: DatabaseError) {}
-        })
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(40.dp))
-        Icon(Icons.Filled.Person, null, Modifier.size(80.dp), tint = Color.Gray)
-        Text(driverName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(40.dp))
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(Modifier.padding(20.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Column { Text("OWED TO YOU", fontSize = 12.sp); Text("$credit ETB", color = Color.Green, fontWeight = FontWeight.Black) }
-                    Column { Text("OWED TO EMPIRE", fontSize = 12.sp); Text("$debt ETB", color = Color.Red, fontWeight = FontWeight.Black) }
-                }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Button(onClick = onLogout, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("LOGOUT") }
     }
 }
