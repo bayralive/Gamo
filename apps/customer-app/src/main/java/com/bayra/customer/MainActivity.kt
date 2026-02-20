@@ -220,6 +220,7 @@ fun BookingHub(
 
         if (status != "IDLE") {
             Surface(Modifier.fillMaxSize(), color = Color.White) { Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(text = status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold); Button(onClick = { status = "IDLE"; onPointChange(null, null, "PICKUP", Tier.COMFORT, 1) }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL") } } }
+                    val d = s.child("currentDist").value?.toString() ?: "0.0"; Text("Distance: $d km", color = Color.Blue)
         } else {
             // 🔥 SELECTOR PIN (Only visible when picking)
             if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { 
