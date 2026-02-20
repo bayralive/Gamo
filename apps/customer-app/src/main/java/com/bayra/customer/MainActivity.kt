@@ -12,7 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -62,7 +61,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v201", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v202", Context.MODE_PRIVATE) }
     
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -126,16 +125,17 @@ fun PassengerSuperApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VerificationView(phone: String, onVerify: (String) -> Unit) {
     var code by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        Text("VERIFICATION", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
-        Text("Code request sent for $phone. Ask in the Telegram group.", textAlign = TextAlign.Center, color = Color.Gray)
+        Text(text = "VERIFICATION", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "Code request sent for $phone. Ask in the Telegram group.", textAlign = TextAlign.Center, color = Color.Gray)
         Spacer(Modifier.height(30.dp))
         OutlinedTextField(value = code, onValueChange = { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth())
         Button(onClick = { onVerify(code) }, Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) {
-            Text("VERIFY & JOIN FLEET", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(text = "VERIFY & JOIN FLEET", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -146,13 +146,13 @@ fun LoginView(name: String, phone: String, onLogin: (String, String) -> Unit) {
     var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }
     Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(id = R.drawable.logo_passenger), null, Modifier.size(200.dp))
-        Text("BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Text(text = "BAYRA TRAVEL", fontSize = 32.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Spacer(Modifier.height(30.dp))
         OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth())
         Button(onClick = { if(n.isNotEmpty() && p.length > 8) onLogin(n, p) }, Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) { 
-            Text("REQUEST ACCESS", color = Color.White, fontWeight = FontWeight.Bold) 
+            Text(text = "REQUEST ACCESS", color = Color.White, fontWeight = FontWeight.Bold) 
         }
     }
 }
@@ -181,33 +181,34 @@ fun BookingHub(name: String, prefs: android.content.SharedPreferences) {
             Surface(Modifier.fillMaxSize(), color = Color.White) {
                 Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = IMPERIAL_BLUE); Text(text = status, modifier = Modifier.padding(20.dp), fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
-                    Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL") }
+                    Button(onClick = { status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply() }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text(text = "CANCEL") }
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { Text("📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(text = "📍", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = IMPERIAL_RED) }
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(Tier.values().toList()) { t -> 
                         Surface(modifier = Modifier.clickable { selectedTier = t }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
-                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
+                            Text(text = t.label, modifier = Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
                         } 
                     } 
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { 
                     val id = "R_${System.currentTimeMillis()}"
                     val pt = mapRef?.mapCenter as GeoPoint
                     FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to "450", "pLat" to pt.latitude, "pLon" to pt.longitude, "tier" to selectedTier.label))
                     activeId = id; prefs.edit().putString("active_id", id).apply()
                 }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) { 
-                    Text("BOOK ${selectedTier.label.uppercase()}", color = Color.White, fontWeight = FontWeight.Bold) 
+                    Text(text = "BOOK ${selectedTier.label.uppercase()}", color = Color.White, fontWeight = FontWeight.Bold) 
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryPage(name: String) {
     val trips = remember { mutableStateListOf<DataSnapshot>() }
@@ -219,9 +220,9 @@ fun HistoryPage(name: String) {
     }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Order History", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
+            Text(text = "Order History", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
             IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) }
         }
-        LazyColumn { items(trips) { t -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) { Text("Ride"); Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
+        LazyColumn { items(trips) { t -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "Ride"); Text(text = "${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
     }
 }
