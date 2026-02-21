@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v218", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v219", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
@@ -80,19 +80,29 @@ fun DriverAppRoot() {
             Scaffold(
                 bottomBar = {
                     NavigationBar(containerColor = Color.Black) {
-                        NavigationBarItem(icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") }, selected = currentTab == "HOME", onClick = { currentTab = "HOME" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
-                        NavigationBarItem(icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") }, selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray))
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") },
+                            selected = currentTab == "HOME", onClick = { currentTab = "HOME" },
+                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
+                        )
+                        NavigationBarItem(
+                            icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") },
+                            selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" },
+                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
+                        )
                     }
                 }
             ) { p ->
                 Box(Modifier.padding(p)) {
-                    if (currentTab == "HOME") RadarHub(dName, activity) { isAuth = false; prefs.edit().clear().apply() }
+                    if (currentViewMatch(currentTab, "HOME")) RadarHub(dName, activity) { isAuth = false; prefs.edit().clear().apply() }
                     else DriverAccountView(dName, onHistory = { showHistory = true }) { isAuth = false; prefs.edit().clear().apply() }
                 }
             }
         }
     }
 }
+
+fun currentViewMatch(current: String, target: String): Boolean = current == target
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,9 +171,8 @@ fun RadarHub(driverName: String, activity: MainActivity?, onLogout: () -> Unit) 
                            Text("$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Bold)
                            
                            if (status == "PAID_CHAPA" && isVerified) {
-                               // 🔥 THE SECURITY SHIELD UI
                                Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp))
-                               Text("PAYMENT VERIFIED BY EMPIRE", color = Color(0xFF2E7D32), fontWeight = FontWeight.ExtraBold)
+                               Text("PAYMENT VERIFIED", color = Color(0xFF2E7D32), fontWeight = FontWeight.ExtraBold)
                                Button(onClick = {
                                    val p = price.replace("[^0-9]".toRegex(), "").toInt()
                                    driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
@@ -201,6 +210,7 @@ fun RadarHub(driverName: String, activity: MainActivity?, onLogout: () -> Unit) 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryPage(driverName: String, onBack: () -> Unit) {
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
@@ -222,6 +232,7 @@ fun HistoryPage(driverName: String, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAccountView(driverName: String, onHistory: () -> Unit, onLogout: () -> Unit) {
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
@@ -256,6 +267,7 @@ fun DriverAccountView(driverName: String, onHistory: () -> Unit, onLogout: () ->
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(onSuccess: (String) -> Unit) {
     val ctx = LocalContext.current
