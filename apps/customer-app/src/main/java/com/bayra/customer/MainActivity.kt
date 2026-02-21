@@ -38,7 +38,6 @@ import coil.compose.AsyncImage
 import com.google.firebase.database.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.GeoPoint
@@ -61,7 +60,7 @@ const val CHAT_ID = "5232430147"
 enum class Tier(val label: String, val base: Double, val isHr: Boolean) {
     POOL("Pool", 80.0, false), COMFORT("Comfort", 120.0, false), 
     CODE_3("Code 3", 280.0, false), BAJAJ_HR("Bajaj Hr", 350.0, true),
-    C3_HR("C3 Hr", 500.0, true)
+    C3_HR("C3 Hr", 550.0, true)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,7 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraPrestige_v215"
+        Configuration.getInstance().userAgentValue = "BayraPrestige_v216"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         setContent { PassengerSuperApp() }
     }
@@ -80,26 +79,22 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v215", Context.MODE_PRIVATE) }
-    
-    // 🔥 PERSISTENT HOISTED STATE
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v216", Context.MODE_PRIVATE) }
     var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
     var isVerifying by rememberSaveable { mutableStateOf(prefs.getBoolean("is_v", false)) }
-    
-    // 🔥 BOOKING STATE (Persists during navigation)
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var currentView by rememberSaveable { mutableStateOf("MAP") }
+
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
     var selectedTier by remember { mutableStateOf(Tier.COMFORT) }
     var step by rememberSaveable { mutableStateOf("PICKUP") }
     var hrCount by rememberSaveable { mutableStateOf(1) }
-
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    var currentView by rememberSaveable { mutableStateOf("MAP") }
 
     MaterialTheme(colorScheme = if (isDarkMode) darkColorScheme() else lightColorScheme(primary = IMPERIAL_BLUE)) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -117,8 +112,8 @@ fun PassengerSuperApp() {
                     VerificationView(pPhone, prefs) { code ->
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
-                                if (s.value?.toString() == code) { prefs.edit().putBoolean("auth", true).apply(); isAuth = true; isVerifying = false }
-                                else Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show()
+                                if (s.value?.toString() == code) { prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply(); isAuth = true; isVerifying = false }
+                                else Toast.makeText(ctx, "Invalid Code", Toast.LENGTH_SHORT).show()
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
@@ -131,15 +126,14 @@ fun PassengerSuperApp() {
                         ModalDrawerSheet {
                             Column(Modifier.padding(20.dp)) {
                                 Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), IMPERIAL_BLUE)
-                                Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                                Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
+                                Text(pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                Text(pPhone, fontSize = 12.sp, color = Color.Gray)
                             }
                             Divider()
-                            NavigationDrawerItem(label = { Text("Home Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
-                            NavigationDrawerItem(label = { Text("My Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
-                            NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIF", onClick = { currentView = "NOTIF"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Notifications, null) })
+                            NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
+                            NavigationDrawerItem(label = { Text("Orders") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                             NavigationDrawerItem(label = { Text("Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
-                            NavigationDrawerItem(label = { Text("About Bayra") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
+                            NavigationDrawerItem(label = { Text("About") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
                             Divider()
                             NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                         }
@@ -153,7 +147,6 @@ fun PassengerSuperApp() {
                                 "MAP" -> BookingHub(pName, pEmail, prefs, pickupPt, destPt, selectedTier, step, hrCount,
                                     onPointChange = { p, d, s, t, h -> pickupPt = p; destPt = d; step = s; selectedTier = t; hrCount = h })
                                 "ORDERS" -> HistoryPage(pName)
-                                "NOTIF" -> NotificationPage()
                                 "SETTINGS" -> SettingsPage(isDarkMode) { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }
                                 "ABOUT" -> AboutUsPage()
                             }
@@ -175,9 +168,9 @@ fun BookingHub(
     val ctx = LocalContext.current
     var status by remember { mutableStateOf("IDLE") }
     var activeId by remember { mutableStateOf(prefs.getString("active_id", "") ?: "") }
+    var liveDist by remember { mutableStateOf("0.0") }
     var mapRef by remember { mutableStateOf<MapView?>(null) }
     
-    // 💧 THE BLACK WATER DROP BITMAP
     val blackDropIcon = remember {
         val size = 120
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -193,8 +186,11 @@ fun BookingHub(
 
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
-            FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId/status").addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(s: DataSnapshot) { status = s.value?.toString() ?: "IDLE" }
+            FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) { 
+                    status = s.child("status").value?.toString() ?: "IDLE" 
+                    liveDist = s.child("currentDist").value?.toString() ?: "0.0"
+                }
                 override fun onCancelled(e: DatabaseError) {}
             })
         }
@@ -203,13 +199,10 @@ fun BookingHub(
     Box(Modifier.fillMaxSize()) {
         AndroidView(factory = { c -> 
             MapView(c).apply { 
-                setTileSource(object : OnlineTileSourceBase("Prestige", 0, 20, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m&")) {
-                    override fun getTileURLString(p: Long): String = "$baseUrl&x=${MapTileIndex.getX(p)}&y=${MapTileIndex.getY(p)}&z=${MapTileIndex.getZoom(p)}"
-                })
+                setTileSource(object : OnlineTileSourceBase("Prestige", 0, 20, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m&")) { override fun getTileURLString(p: Long): String = "$baseUrl&x=${MapTileIndex.getX(p)}&y=${MapTileIndex.getY(p)}&z=${MapTileIndex.getZoom(p)}" })
                 setBuiltInZoomControls(false); setMultiTouchControls(true)
                 controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); overlays.add(loc)
-                mapRef = this 
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); overlays.add(loc); mapRef = this 
             } 
         }, update = { view ->
             view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
@@ -219,30 +212,26 @@ fun BookingHub(
         })
 
         if (status != "IDLE") {
-            Surface(Modifier.fillMaxSize(), color = Color.White) { Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(text = status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold); Button(onClick = { status = "IDLE"; onPointChange(null, null, "PICKUP", Tier.COMFORT, 1) }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL") } } }
-                    val d = s.child("currentDist").value?.toString() ?: "0.0"; Text("Distance: $d km", color = Color.Blue)
+            Surface(Modifier.fillMaxSize(), color = Color.White) { 
+                Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { 
+                    CircularProgressIndicator()
+                    Text(text = status, Modifier.padding(20.dp), fontWeight = FontWeight.Bold)
+                    // 🔥 LIVE ODOMETER FEED
+                    Text(text = "Live Distance: $liveDist km", color = IMPERIAL_BLUE, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Spacer(Modifier.height(40.dp))
+                    Button(onClick = { status = "IDLE"; onPointChange(null, null, "PICKUP", Tier.COMFORT, 1) }, colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL") } 
+                } 
+            }
         } else {
-            // 🔥 SELECTOR PIN (Only visible when picking)
             if(step != "CONFIRM") Box(Modifier.fillMaxSize(), Alignment.Center) { 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = step, color = Color.White, modifier = Modifier.background(Color.Black.copy(0.6f)).padding(4.dp), fontSize = 10.sp)
                     Text("💧", fontSize = 48.sp, modifier = Modifier.padding(bottom = 48.dp), color = Color.Black) 
                 }
             }
-
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
-                    items(Tier.values().toList()) { t -> 
-                        Surface(modifier = Modifier.clickable { 
-                            onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount)
-                        }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
-                            Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
-                        } 
-                    } 
-                }
-                
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(12.dp, 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
                 Spacer(Modifier.height(16.dp))
-
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
@@ -253,22 +242,12 @@ fun BookingHub(
                         }
                     }
                 }
-
-                if (step == "PICKUP") {
-                    Button(onClick = { onPointChange(mapRef?.mapCenter as GeoPoint, destPt, if(selectedTier.isHr) "CONFIRM" else "DEST", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET PICKUP", fontWeight = FontWeight.Bold) }
-                } else if (step == "DEST") {
-                    Button(onClick = { onPointChange(pickupPt, mapRef?.mapCenter as GeoPoint, "CONFIRM", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
-                } else {
+                if (step == "PICKUP") Button(onClick = { onPointChange(mapRef?.mapCenter as GeoPoint, destPt, if(selectedTier.isHr) "CONFIRM" else "DEST", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET PICKUP", fontWeight = FontWeight.Bold) }
+                else if (step == "DEST") Button(onClick = { onPointChange(pickupPt, mapRef?.mapCenter as GeoPoint, "CONFIRM", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
+                else {
                     val fare = if(selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt() else (selectedTier.base * 2.5 * 1.15).toInt()
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Text("$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED)
-                        TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") }
-                    }
-                    Button(onClick = { 
-                        val id = "R_${System.currentTimeMillis()}"
-                        FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to fare.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0))
-                        activeId = id; prefs.edit().putString("active_id", id).apply()
-                    }, Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(12.dp)) { Text("BOOK NOW", fontWeight = FontWeight.ExtraBold) }
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("$fare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED); TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } }
+                    Button(onClick = { val id = "R_${System.currentTimeMillis()}"; FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "status" to "REQUESTED", "price" to fare.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0)); activeId = id; prefs.edit().putString("active_id", id).apply() }, Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(12.dp)) { Text("BOOK NOW", fontWeight = FontWeight.ExtraBold) }
                 }
             }
         }
@@ -280,11 +259,10 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(20.dp))
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("Dark Mode"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
+        Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
         Divider(Modifier.padding(vertical = 20.dp))
         Text("Support", fontWeight = FontWeight.Bold, color = Color.Gray)
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Telegram") }
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Telegram Community") }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Email Support") }
     }
 }
@@ -294,21 +272,27 @@ fun AboutUsPage() {
     Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho", fontStyle = FontStyle.Italic, color = Color.Gray)
-        Spacer(Modifier.height(24.dp))
-        Text("Policy", fontWeight = FontWeight.Bold); Text("• Ride Base: 50 ETB\n• Night: 200 ETB\n• Contrat: 350-500 ETB/hr")
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Policy", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("• Ride Base: 50 ETB\n• Night: 200 ETB (8PM-6AM)\n• Bajaj Hr: 350 ETB/hr\n• Car Hr: 500 ETB/hr\n• Distance limit: 12km/hr", fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(20.dp))
+        Text("Arba Minch Pride", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Wisdom and Peace in every journey.", fontSize = 14.sp)
     }
 }
 
 @Composable
 fun NotificationPage() {
-    Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(16.dp)); Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text("Welcome", fontWeight = FontWeight.Bold); Text("Your Imperial journey begins.") } } }
+    val bulletins = remember { mutableStateListOf<DataSnapshot>() }
+    LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("bulletins").addValueEventListener(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { bulletins.clear(); s.children.forEach { bulletins.add(it) } }; override fun onCancelled(e: DatabaseError) {} }) }
+    Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); LazyColumn { items(bulletins) { b -> Card(Modifier.fillMaxWidth().padding(bottom = 16.dp)) { Column { val img = b.child("imageUrl").value?.toString() ?: ""; if(img.isNotEmpty()) AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop); Column(Modifier.padding(12.dp)) { Text(b.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(b.child("message").value.toString()) } } } } } }
 }
 
 @Composable
 fun HistoryPage(name: String) {
     val trips = remember { mutableStateListOf<DataSnapshot>() }
-    LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }) }; override fun onCancelled(e: DatabaseError) {} }) }
-    Column(Modifier.fillMaxSize().padding(16.dp)) { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("History", fontSize = 24.sp, fontWeight = FontWeight.Bold); IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }; LazyColumn { items(trips) { t -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("Ride"); Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } } }
+    LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }.reversed()) }; override fun onCancelled(e: DatabaseError) {} }) }
+    Column(Modifier.fillMaxSize().padding(16.dp)) { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("History", fontSize = 24.sp, fontWeight = FontWeight.Bold); if(trips.isNotEmpty()) IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }; LazyColumn { items(trips) { t -> Card(Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(t.child("tier").value.toString()); Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } } }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
