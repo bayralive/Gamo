@@ -1,61 +1,132 @@
 package com.bayra.driver
 
 import android.Manifest
-import android.content.*
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.media.RingtoneManager
 import android.net.Uri
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
 import android.preference.PreferenceManager
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.*
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import com.google.firebase.database.*
+import androidx.core.app.NotificationCompat
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.MutableData
+import com.google.firebase.database.Transaction
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import com.bayra.driver.R
+import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
+val ImperialBlue = Color(0xFF1A237E)
+val ImperialRed = Color(0xFFD50000)
+val ImperialWhite = Color(0xFFFFFFFF)
+val EmeraldGreen = Color(0xFF2E7D32)
 
-data class RideJob(
-    val id: String = "", val pName: String = "", val pPhone: String = "",
-    val price: String = "0", val status: String = "IDLE", val tier: String = "",
-    val pLat: Double = 0.0, val pLon: Double = 0.0, val dLat: Double = 0.0, val dLon: Double = 0.0
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+    // 1. Ask for POST_NOTIFICATIONS alongside GPS
+    private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
+        requestLauncher.launch(arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION, 
+            Manifest.permission.ACCESS_COARSE_LOCATION, 
+            Manifest.permission.POST_NOTIFICATIONS
+        ))
+        
         setContent { MaterialTheme { DriverAppRoot() } }
     }
-    fun launchNav(lat: Double, lon: Double) {
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$lat,$lon")).apply { setPackage("com.google.android.apps.maps") }) }
-        catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lon"))) }
+    
+    fun launchNav(lat: Double, lon: Double) { 
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$lat,$lon")).apply { setPackage("com.google.android.apps.maps") }) } 
+        catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lon"))) } 
+    }
+    
+    fun playAlarm() { 
+        try { RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)).play() } catch (e: Exception) {} 
     }
 }
 
@@ -64,234 +135,432 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v219", Context.MODE_PRIVATE) }
-    
+    val prefs = remember { ctx.getSharedPreferences("bayra_d_v230", Context.MODE_PRIVATE) }
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
+    var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     var currentTab by rememberSaveable { mutableStateOf("HOME") }
     var showHistory by remember { mutableStateOf(false) }
 
+    var debt by remember { mutableStateOf(0) }
+    var credit by remember { mutableStateOf(0) }
+
+    // 2. The Imperial Voice Registration: Saves FCM Token to the Driver Database
+    LaunchedEffect(isAuth) {
+        if (isAuth && dName.isNotEmpty()) {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/fcmToken").setValue(task.result)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(isAuth) {
+        if (isAuth) {
+            try {
+                val serviceIntent = Intent(ctx, ImmortalBeaconService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
+            } catch (e: Exception) {}
+        }
+    }
+
     if (!isAuth) {
-        LoginScreen { n -> dName = n; isAuth = true; prefs.edit().putString("n", n).apply() }
+        LoginScreen { n, p -> dName = n; dPhone = p; isAuth = true; prefs.edit().putString("n", n).putString("p", p).apply() }
     } else {
+        LaunchedEffect(dName) {
+            FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(dName).addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) { 
+                    debt = s.child("debt").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
+                    credit = s.child("credit").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
+                }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+        }
+        
         if (showHistory) {
             HistoryPage(dName) { showHistory = false }
-        } else {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar(containerColor = Color.Black) {
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar") },
-                            selected = currentTab == "HOME", onClick = { currentTab = "HOME" },
-                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
-                        )
-                        NavigationBarItem(
-                            icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Account") },
-                            selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" },
-                            colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Green, indicatorColor = Color.DarkGray)
-                        )
-                    }
+        } else { 
+            Scaffold(bottomBar = { 
+                NavigationBar(containerColor = Color.Black) {
+                    NavigationBarItem(icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar", color = ImperialWhite) }, selected = currentTab == "HOME", onClick = { currentTab = "HOME" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = EmeraldGreen))
+                    NavigationBarItem(icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Vault", color = ImperialWhite) }, selected = currentTab == "ACCOUNT", onClick = { currentTab = "ACCOUNT" }, colors = NavigationBarItemDefaults.colors(selectedIconColor = EmeraldGreen))
                 }
-            ) { p ->
-                Box(Modifier.padding(p)) {
-                    if (currentViewMatch(currentTab, "HOME")) RadarHub(dName, activity) { isAuth = false; prefs.edit().clear().apply() }
-                    else DriverAccountView(dName, onHistory = { showHistory = true }) { isAuth = false; prefs.edit().clear().apply() }
-                }
+            }) { p -> 
+                Box(Modifier.padding(p).fillMaxSize()) {
+                    if (currentTab == "HOME") RadarHub(dName, dPhone, debt, credit, activity)
+                    else DriverAccountView(dName, debt, credit, { showHistory = true }) { isAuth = false; prefs.edit().clear().apply() }
+                } 
             }
         }
     }
 }
 
-fun currentViewMatch(current: String, target: String): Boolean = current == target
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadarHub(driverName: String, activity: MainActivity?, onLogout: () -> Unit) {
+fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, activity: MainActivity?) {
     val ctx = LocalContext.current
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
-
+    
     var jobs by remember { mutableStateOf(listOf<DataSnapshot>()) }
-    var activeJobSnap by remember { mutableStateOf<DataSnapshot?>(null) }
-    var debt by remember { mutableStateOf(0) }
-    var credit by remember { mutableStateOf(0) }
+    var activeSnap by remember { mutableStateOf<DataSnapshot?>(null) }
     var isRadarOn by remember { mutableStateOf(false) }
+    
+    var distanceKm by remember { mutableStateOf(0.0) }
+    var lastLoc by remember { mutableStateOf<Location?>(null) }
+    val isEnforcerLocked = (debt - credit) >= 500
 
+    LaunchedEffect(jobs.size) { if(isRadarOn && jobs.isNotEmpty() && activeSnap == null) activity?.playAlarm() }
+    
     LaunchedEffect(Unit) {
-        driverRef.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) { debt = s.child("debt").value?.toString()?.toInt()?:0; credit = s.child("credit").value?.toString()?.toInt()?:0 }
-            override fun onCancelled(e: DatabaseError) {}
-        })
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 val list = mutableListOf<DataSnapshot>()
                 var current: DataSnapshot? = null
-                s.children.forEach { 
-                    val status = it.child("status").value?.toString() ?: ""
-                    if (status == "REQUESTED") list.add(it)
-                    else if (status != "COMPLETED" && it.child("driverName").value == driverName) current = it
+                var passengerCancelled = false
+                
+                s.children.forEach { snap -> 
+                    val status = snap.child("status").value?.toString() ?: ""
+                    
+                    if (status == "REQUESTED") {
+                        list.add(snap) 
+                    } else if (snap.child("driverName").value?.toString() == driverName) {
+                        if (status == "CANCELLED") {
+                            passengerCancelled = true
+                        } else if (status != "COMPLETED") {
+                            current = snap 
+                        }
+                    }
                 }
-                jobs = list; activeJobSnap = current
+                
+                if (passengerCancelled && activeSnap != null && current == null) {
+                    Toast.makeText(ctx, "Passenger Cancelled", Toast.LENGTH_LONG).show()
+                    distanceKm = 0.0
+                }
+                
+                jobs = list
+                activeSnap = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
+    }
+
+    DisposableEffect(activeSnap?.child("status")?.value?.toString()) {
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val ll = LocationListener { loc -> 
+            if (activeSnap?.child("status")?.value?.toString() == "ON_TRIP") { 
+                lastLoc?.let { distanceKm += (it.distanceTo(loc) / 1000.0) }
+                lastLoc = loc 
+            } 
+        }
+        if (activeSnap?.child("status")?.value?.toString() == "ON_TRIP") {
+            try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 5f, ll) } catch (e: SecurityException) {}
+        }
+        onDispose { lm.removeUpdates(ll) }
     }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { c -> MapView(c).apply { setTileSource(TileSourceFactory.MAPNIK); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(15.0); controller.setCenter(GeoPoint(6.0333, 37.5500)) } }, update = { view ->
-            view.overlays.clear()
-            activeJobSnap?.let { job -> Marker(view).apply { position = GeoPoint(job.child("pLat").value.toString().toDouble(), job.child("pLon").value.toString().toDouble()); title = "Client" }.also { view.overlays.add(it) } }
-            ?: jobs.forEach { job -> Marker(view).apply { position = GeoPoint(job.child("pLat").value.toString().toDouble(), job.child("pLon").value.toString().toDouble()); title = "Req" }.also { view.overlays.add(it) } }
-            view.invalidate()
-        })
-        
-        Column(Modifier.align(Alignment.BottomCenter).padding(16.dp)) {
-            if(!isRadarOn) {
-               Button(onClick = { isRadarOn = true }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("GO ONLINE") }
-            } else {
-               Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) {
-                    Row(Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Text("RADAR ONLINE", color = Color.Green, fontWeight = FontWeight.Bold)
-                        Button(onClick = { isRadarOn = false }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("STOP") }
+        AndroidView(factory = { c -> 
+            MapView(c).apply { 
+                val googleRoadmap = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase("Google-Roadmap", 0, 19, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m")) {
+                    override fun getTileURLString(pMapTileIndex: Long): String {
+                        return baseUrl + "&x=" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) +
+                               "&y=" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) +
+                               "&z=" + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex)
                     }
-               }
-               
-               if (debt - credit >= 500) {
-                   Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red)) { Text("ACCOUNT LOCKED", Modifier.padding(20.dp), color = Color.White, fontWeight = FontWeight.Bold) }
-               } else if (activeJobSnap != null) {
-                   val status = activeJobSnap!!.child("status").value.toString()
-                   val isVerified = activeJobSnap!!.child("verifiedByBackend").value == true
-                   
-                   Card(
-                       modifier = Modifier.fillMaxWidth(),
-                       colors = CardDefaults.cardColors(containerColor = if (status == "PAID_CHAPA" && isVerified) Color(0xFFE8F5E9) else Color.White)
-                   ) {
-                       Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                           val price = activeJobSnap!!.child("price").value?.toString() ?: "0"
-                           Text("$price ETB", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                           
-                           if (status == "PAID_CHAPA" && isVerified) {
-                               Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp))
-                               Text("PAYMENT VERIFIED", color = Color(0xFF2E7D32), fontWeight = FontWeight.ExtraBold)
-                               Button(onClick = {
-                                   val p = price.replace("[^0-9]".toRegex(), "").toInt()
-                                   driverRef.child("credit").setValue(credit + (p * 0.85).toInt())
-                                   ref.child(activeJobSnap!!.key!!).child("status").setValue("COMPLETED")
-                               }, Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("CLOSE RIDE") }
-                           } else if (status == "PAID_CASH") {
-                               Text("PASSENGER PAID CASH", color = Color(0xFF1A237E), fontWeight = FontWeight.Bold)
-                               Button(onClick = {
-                                   val p = price.replace("[^0-9]".toRegex(), "").toInt()
-                                   driverRef.child("debt").setValue(debt + (p * 0.15).toInt())
-                                   ref.child(activeJobSnap!!.key!!).child("status").setValue("COMPLETED")
-                               }, Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Text("CONFIRM CASH & CLOSE") }
-                           } else {
-                               val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
-                               Button(onClick = { ref.child(activeJobSnap!!.key!!).child("status").setValue(next) }, Modifier.fillMaxWidth().height(55.dp).padding(top = 10.dp)) { 
-                                   Text(if(next == "ARRIVED_DEST") "ARRIVED AT DESTINATION" else next) 
-                               }
-                           }
-                       }
-                   }
-               } else {
-                   LazyColumn(Modifier.heightIn(max = 200.dp)) {
-                       items(jobs) { snap ->
-                           Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                               Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                                   Column { Text(snap.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text("${snap.child("price").value} ETB", color = Color.Blue) }
-                                   Button(onClick = { ref.child(snap.key!!).updateChildren(mapOf("status" to "ACCEPTED", "driverName" to driverName)) }) { Text("ACCEPT") }
-                               }
-                           }
-                       }
-                   }
-               }
+                }
+                setTileSource(googleRoadmap)
+                setBuiltInZoomControls(false)
+                setMultiTouchControls(true)
+                controller.setZoom(16.0)
+                controller.setCenter(GeoPoint(6.0333, 37.5500)) 
+            } 
+        }, update = { view ->
+            view.overlays.clear()
+            activeSnap?.let { 
+                val pLat = it.child("pLat").value?.toString()?.toDoubleOrNull() ?: 0.0
+                val pLon = it.child("pLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                Marker(view).apply { position = GeoPoint(pLat, pLon) }.also { m -> view.overlays.add(m) } 
+            } ?: jobs.forEach { 
+                val pLat = it.child("pLat").value?.toString()?.toDoubleOrNull() ?: 0.0
+                val pLon = it.child("pLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                Marker(view).apply { position = GeoPoint(pLat, pLon) }.also { m -> view.overlays.add(m) } 
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HistoryPage(driverName: String, onBack: () -> Unit) {
-    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
-    var trips by remember { mutableStateOf(listOf<DataSnapshot>()) }
-    LaunchedEffect(Unit) {
-        ref.orderByChild("driverName").equalTo(driverName).addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) { trips = s.children.filter { it.child("status").value == "COMPLETED" }.reversed() }
-            override fun onCancelled(e: DatabaseError) {}
-        })
-    }
-    Column(Modifier.fillMaxSize().background(Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, null) }
-            Text("TRIP HISTORY", fontSize = 20.sp, fontWeight = FontWeight.Black)
-        }
-        LazyColumn(Modifier.padding(16.dp)) {
-            items(trips) { t -> Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween) { Column { Text(t.child("pName").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("tier").value.toString(), fontSize = 12.sp) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Black, color = Color(0xFF2E7D32)) } } }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DriverAccountView(driverName: String, onHistory: () -> Unit, onLogout: () -> Unit) {
-    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
-    var debt by remember { mutableStateOf(0) }
-    var credit by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
-        ref.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(s: DataSnapshot) {
-                debt = s.child("debt").value?.toString()?.toInt() ?: 0
-                credit = s.child("credit").value?.toString()?.toInt() ?: 0
+            view.invalidate()
+        }, modifier = Modifier.fillMaxSize())
+        
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            if (isEnforcerLocked) {
+                Box(Modifier.fillMaxWidth().background(ImperialRed).padding(16.dp)) { 
+                    Text("THE ENFORCER: Radar Locked. Debt - Credit >= 500 ETB. Settle balances.", color = ImperialWhite, fontWeight = FontWeight.Bold) 
+                } 
+            } else {
+                Spacer(Modifier.height(1.dp))
             }
-            override fun onCancelled(e: DatabaseError) {}
-        })
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(40.dp)); Icon(Icons.Filled.Person, null, Modifier.size(80.dp), tint = Color.LightGray)
-        Text(driverName, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(40.dp))
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(Modifier.padding(24.dp)) {
-                Text("FINANCIAL STATUS", fontWeight = FontWeight.Bold, color = Color.Gray)
-                Spacer(Modifier.height(16.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Column { Text("OWED TO YOU", fontSize = 12.sp); Text("$credit ETB", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32)) }
-                    Column(horizontalAlignment = Alignment.End) { Text("OWED TO EMPIRE", fontSize = 12.sp); Text("$debt ETB", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color.Red) }
+            
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                if(!isRadarOn) {
+                    Button(onClick = { isRadarOn = true }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)) { 
+                        Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) 
+                    }
+                } else {
+                    Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha=0.8f)) { 
+                        Row(Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
+                            Text("RADAR ONLINE", color = Color.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Button(onClick = { isRadarOn = false }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text("STOP") } 
+                        } 
+                    }
+                    
+                    activeSnap?.let { job ->
+                        val status = job.child("status").value?.toString() ?: ""
+                        val basePrice = job.child("price").value?.toString()?.replace("[^0-9]".toRegex(), "")?.toIntOrNull() ?: 0
+                        val isOverLimit = distanceKm > 12.0
+                        val surcharge = if (isOverLimit) ((distanceKm - 12.0) * 30).toInt() else 0
+                        val finalPrice = basePrice + surcharge
+                        val pName = job.child("pName").value?.toString() ?: "Passenger"
+                        val pPhone = job.child("pPhone").value?.toString() ?: ""
+                        
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status == "PAID_CHAPA") EmeraldGreen else ImperialWhite)) {
+                            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$pName - $finalPrice ETB", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if(status == "PAID_CHAPA") ImperialWhite else Color.Black)
+                                if (status == "ON_TRIP") Text("Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if(isOverLimit) ImperialRed else ImperialBlue)
+                                
+                                if (status.startsWith("PAID_")) {
+                                    Icon(Icons.Filled.CheckCircle, null, tint = if(status == "PAID_CHAPA") ImperialWhite else Color.Green, modifier = Modifier.size(48.dp))
+                                    Text(if(status == "PAID_CHAPA") "PAYMENT VERIFIED" else "CASH PENDING", fontWeight = FontWeight.ExtraBold, color = if(status == "PAID_CHAPA") ImperialWhite else Color.Green, fontSize = 20.sp)
+                                    Button(onClick = { 
+                                        driverRef.runTransaction(object : Transaction.Handler { 
+                                            override fun doTransaction(cd: MutableData): Transaction.Result { 
+                                                if(status == "PAID_CHAPA") { 
+                                                    val curCredit = cd.child("credit").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                    cd.child("credit").value = curCredit + (finalPrice * 0.85) 
+                                                } else { 
+                                                    val curDebt = cd.child("debt").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                    cd.child("debt").value = curDebt + (finalPrice * 0.15) 
+                                                }
+                                                return Transaction.success(cd) 
+                                            }
+                                            override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) { 
+                                                if (c) { ref.child(job.key!!).child("status").setValue("COMPLETED"); distanceKm = 0.0 } 
+                                            } 
+                                        }) 
+                                    }, Modifier.fillMaxWidth().padding(top=10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { 
+                                        Text("FINISH & CLOSE", color = ImperialWhite) 
+                                    }
+                                } else {
+                                    Row(Modifier.fillMaxWidth().padding(top=10.dp), Arrangement.spacedBy(8.dp)) { 
+                                        val isOnTrip = status == "ON_TRIP"
+                                        Button(onClick = { 
+                                            val dLat = job.child(if(isOnTrip) "dLat" else "pLat").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                            val dLon = job.child(if(isOnTrip) "dLon" else "pLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                            activity?.launchNav(dLat, dLon) 
+                                        }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) { Text(if(isOnTrip) "NAV DEST" else "NAV PICKUP") }
+                                        IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$pPhone"))) }, Modifier.background(Color.Black, CircleShape)) { Icon(Icons.Filled.Call, null, tint = Color.White) } 
+                                    }
+                                    val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
+                                    Button(onClick = { 
+                                        if (next == "ARRIVED_DEST") ref.child(job.key!!).child("price").setValue(finalPrice.toString())
+                                        ref.child(job.key!!).child("status").setValue(next) 
+                                    }, Modifier.fillMaxWidth().padding(top=10.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { 
+                                        Text(next, fontWeight = FontWeight.Bold) 
+                                    }
+                                }
+                            }
+                        }
+                    } ?: LazyColumn(Modifier.heightIn(max=250.dp)) { 
+                        items(items = jobs) { snap -> 
+                            Card(Modifier.fillMaxWidth().padding(bottom=8.dp), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
+                                Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
+                                    Column { 
+                                        Text(snap.child("pName").value?.toString() ?: "", fontWeight=FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                                        Text("Fare: ${snap.child("price").value?.toString() ?: "0"} ETB", color = Color.DarkGray) 
+                                    }
+                                    Button(onClick = { 
+                                        if (!isEnforcerLocked) { 
+                                            ref.child(snap.key!!).runTransaction(object : Transaction.Handler { 
+                                                override fun doTransaction(cd: MutableData): Transaction.Result { 
+                                                    if(cd.child("status").value?.toString() == "REQUESTED") { 
+                                                        cd.child("status").value = "ACCEPTED"
+                                                        cd.child("driverName").value = driverName
+                                                        cd.child("dPhone").value = driverPhone
+                                                        return Transaction.success(cd) 
+                                                    }
+                                                    return Transaction.abort() 
+                                                }
+                                                override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {} 
+                                            }) 
+                                        } else {
+                                            Toast.makeText(ctx, "Radar Locked by Enforcer", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }, colors = ButtonDefaults.buttonColors(containerColor = if (isEnforcerLocked) Color.Gray else ImperialBlue), enabled = !isEnforcerLocked) { 
+                                        Text("ACCEPT", color = ImperialWhite, fontWeight = FontWeight.Bold) 
+                                    } 
+                                } 
+                            } 
+                        } 
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = onHistory, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A237E))) { Text("VIEW TRIP HISTORY") }
-        Spacer(Modifier.weight(1f)); Button(onClick = onLogout, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.fillMaxWidth()) { Text("LOGOUT") }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginScreen(onSuccess: (String) -> Unit) {
+@Composable 
+fun LoginScreen(onLoginSuccess: (String, String) -> Unit) { 
     val ctx = LocalContext.current
-    var nIn by remember { mutableStateOf("") }
-    var pIn by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(32.dp).background(Color.White), Arrangement.Center, Alignment.CenterHorizontally) {
-        val logoId = ctx.resources.getIdentifier("logo_driver", "drawable", ctx.packageName)
-        if (logoId != 0) Image(painterResource(id = logoId), null, Modifier.size(200.dp))
-        Text("DRIVER LOGIN", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF1A237E))
-        Spacer(Modifier.height(30.dp))
-        OutlinedTextField(value = nIn, onValueChange = { nIn = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(value = pIn, onValueChange = { pIn = it }, label = { Text("Imperial PIN") }, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
-        Spacer(Modifier.height(20.dp))
-        if (loading) CircularProgressIndicator() else Button(onClick = {
-            loading = true
-            FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(nIn).addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(s: DataSnapshot) {
-                    if (s.child("password").value?.toString() == pIn) onSuccess(nIn) else Toast.makeText(ctx, "Access Denied", Toast.LENGTH_SHORT).show()
-                    loading = false
-                }
-                override fun onCancelled(e: DatabaseError) { loading = false }
-            })
-        }, Modifier.fillMaxWidth().height(60.dp)) { Text("UNLOCK") }
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    Column(Modifier.fillMaxSize().background(ImperialBlue).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { 
+        Image(painterResource(R.drawable.logo_driver), null, Modifier.size(150.dp))
+        Spacer(Modifier.height(32.dp))
+        Text("IMPERIAL GUARD", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ImperialWhite)
+        Spacer(Modifier.height(24.dp))
+        OutlinedTextField(name, { name = it }, label = { Text("Registry Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(16.dp))
+        OutlinedTextField(password, { password = it }, label = { Text("Security Password", color = Color.LightGray) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(32.dp))
+        Button(onClick = { 
+            if (name.isNotEmpty() && password.isNotEmpty()) { 
+                isLoading = true
+                FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name).addListenerForSingleValueEvent(object : ValueEventListener { 
+                    override fun onDataChange(s: DataSnapshot) { 
+                        isLoading = false
+                        val dbPass = s.child("password").value?.toString() ?: ""
+                        val dbPhone = s.child("phone").value?.toString() ?: "0"
+                        
+                        if (dbPass == password) {
+                            onLoginSuccess(name, dbPhone) 
+                        } else {
+                            Toast.makeText(ctx, "Invalid Password or Name", Toast.LENGTH_LONG).show() 
+                        }
+                    }
+                    override fun onCancelled(e: DatabaseError) { isLoading = false } 
+                }) 
+            } else {
+                Toast.makeText(ctx, "Fill all fields", Toast.LENGTH_SHORT).show()
+            }
+        }, Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { 
+            if (isLoading) CircularProgressIndicator(color = ImperialWhite) else Text("AUTHENTICATE", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ImperialWhite) 
+        } 
+    } 
+}
+
+@Composable 
+fun DriverAccountView(n: String, d: Int, c: Int, onH: () -> Unit, onL: () -> Unit) { 
+    val net = c - d
+    Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) { 
+        Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Dual-Vault Ledger", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
+        }
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { 
+            Icon(Icons.Filled.Person, null, Modifier.size(80.dp), tint = ImperialBlue)
+            Text(n, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Spacer(Modifier.height(24.dp))
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
+                Column(Modifier.padding(16.dp)) { 
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) { 
+                        Text("Credit Vault (Chapa 85%)", fontSize = 16.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
+                        Text("+$c ETB", fontSize = 16.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold) 
+                    }
+                    Divider(Modifier.padding(vertical = 12.dp))
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) { 
+                        Text("Debt Vault (Cash 15%)", fontSize = 16.sp, color = ImperialRed, fontWeight = FontWeight.Bold)
+                        Text("-$d ETB", fontSize = 16.sp, color = ImperialRed, fontWeight = FontWeight.Bold) 
+                    }
+                    Divider(Modifier.padding(vertical = 12.dp))
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) { 
+                        Text("Net Empire Standing", fontSize = 18.sp, color = Color.Black, fontWeight = FontWeight.Black)
+                        Text("$net ETB", fontSize = 18.sp, color = if(net >= 0) EmeraldGreen else ImperialRed, fontWeight = FontWeight.Black) 
+                    } 
+                } 
+            }
+            if (d - c >= 500) { 
+                Spacer(Modifier.height(16.dp))
+                Text("RADAR LOCKED BY ENFORCER", color = ImperialRed, fontWeight = FontWeight.Black, fontSize = 16.sp) 
+            }
+            Spacer(Modifier.height(32.dp))
+            Button(onH, Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) { Text("View Dispatch History", color = ImperialWhite) }
+            Spacer(Modifier.height(16.dp))
+            Button(onL, Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Logout", color = ImperialWhite) } 
+        } 
+    } 
+}
+
+@Composable 
+fun HistoryPage(n: String, onB: () -> Unit) { 
+    var h by remember { mutableStateOf(listOf<DataSnapshot>()) }
+    LaunchedEffect(Unit) { 
+        FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("driverName").equalTo(n).addListenerForSingleValueEvent(object : ValueEventListener { 
+            override fun onDataChange(s: DataSnapshot) { 
+                val l = mutableListOf<DataSnapshot>()
+                s.children.forEach { if (it.child("status").value?.toString() == "COMPLETED") l.add(it) }
+                h = l.reversed() 
+            }
+            override fun onCancelled(e: DatabaseError) {} 
+        }) 
+    }
+    Column(Modifier.fillMaxSize().background(Color.White)) { 
+        Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onB) { Icon(Icons.Filled.ArrowBack, null, tint = Color.White) }
+            Spacer(Modifier.width(16.dp))
+            Text("Dispatch History", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
+        }
+        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { 
+            items(items = h) { snap -> 
+                Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))) { 
+                    Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
+                        Column { 
+                            Text(snap.child("pName").value?.toString()?:"", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                            Text(snap.child("tier").value?.toString()?:"", color = Color.Gray, fontSize = 14.sp) 
+                        }
+                        Text("${snap.child("price").value} ETB", fontWeight = FontWeight.Black, fontSize = 16.sp, color = EmeraldGreen) 
+                    } 
+                } 
+            } 
+        } 
+    } 
+}
+
+class ImmortalBeaconService : Service() { 
+    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onCreate() { 
+        super.onCreate()
+        val id = "immortal_beacon"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { 
+            val c = NotificationChannel(id, "Driver Active", NotificationManager.IMPORTANCE_LOW)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(c) 
+        }
+        val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setContentText("Immortal Beacon securing location.").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
+    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
+}
+
+// 3. THE IMPERIAL LISTENER: Catches the Push Notifications
+class BayraMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(message: RemoteMessage) {
+        super.onMessageReceived(message)
+        
+        val channelId = "bayra_alerts"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Priority is set to HIGH so it pops up aggressively on the driver's screen
+            val channel = NotificationChannel(channelId, "Dispatch Alerts", NotificationManager.IMPORTANCE_HIGH)
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle(message.notification?.title ?: "🚨 New Dispatch!")
+            .setContentText(message.notification?.body ?: "Open Radar to view.")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }
