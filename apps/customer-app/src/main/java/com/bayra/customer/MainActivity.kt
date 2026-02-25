@@ -1,8 +1,6 @@
 package com.bayra.customer
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -10,7 +8,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.widget.Toast
@@ -89,7 +86,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -111,9 +107,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import com.bayra.customer.R
-import com.google.firebase.messaging.FirebaseMessaging
-import com.google.firebase.messaging.FirebaseMessagingService
-import com.google.firebase.messaging.RemoteMessage
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(0xFF1A237E)
@@ -164,10 +157,9 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
-    // Ensures FCM token is registered whenever the user is authenticated
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -226,7 +218,6 @@ fun PassengerSuperApp() {
                     gesturesEnabled = false, 
                     drawerContent = {
                         ModalDrawerSheet {
-                            // POSITIONAL REFACTOR
                             Column(Modifier.padding(20.dp), Arrangement.Top, Alignment.Start) {
                                 Icon(imageVector = Icons.Filled.AccountCircle, contentDescription = null, modifier = Modifier.size(64.dp), tint = IMPERIAL_BLUE)
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -245,7 +236,6 @@ fun PassengerSuperApp() {
                 ) {
                     Scaffold(
                         topBar = { 
-                            // POSITIONAL REFACTOR
                             Row(Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), Arrangement.Start, Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
                                 Spacer(modifier = Modifier.width(16.dp))
@@ -330,7 +320,6 @@ fun BookingHub(
 
         if (step == "PICKUP" || step == "DEST") {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                // POSITIONAL REFACTOR
                 Column(Modifier, Arrangement.Top, Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) {
@@ -349,7 +338,6 @@ fun BookingHub(
 
         if (status != "IDLE") {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) { 
-                // POSITIONAL REFACTOR
                 Column(Modifier.padding(24.dp), Arrangement.Center, Alignment.CenterHorizontally) { 
                     if (status == "ARRIVED_DEST" || status.startsWith("PAID_")) {
                         Text("መድረሻዎ ደርሰዋል / ARRIVED", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
@@ -395,7 +383,6 @@ fun BookingHub(
                             Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$driverPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Icon(Icons.Filled.Call, null); Text(" ደውል / CALL") }
                         }
                         Button(onClick = { 
-                            // CORRECT CANCELLATION LOGIC
                             if (status == "REQUESTED") {
                                 FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").removeValue()
                             } else {
@@ -410,7 +397,6 @@ fun BookingHub(
                 } 
             }
         } else {
-            // POSITIONAL REFACTOR
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), Arrangement.Top, Alignment.Start) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(items = Tier.values().toList()) { t -> 
@@ -421,7 +407,6 @@ fun BookingHub(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (selectedTier.isHr && step == "CONFIRM") {
-                    // POSITIONAL REFACTOR
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
                         Row(Modifier, Arrangement.Start, Alignment.CenterVertically) {
@@ -438,7 +423,6 @@ fun BookingHub(
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
                     val f = if(selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt() else (selectedTier.base * 2.5 * 1.15).toInt()
-                    // POSITIONAL REFACTOR
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
                         Text("$f ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED)
                         TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } 
@@ -480,19 +464,16 @@ fun NotificationPage() {
             override fun onCancelled(e: DatabaseError) {} 
         }) 
     }
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) {
         Text("Empire Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         LazyColumn { 
             items(items = bulletins.toList()) { n -> 
                 Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { 
-                    // POSITIONAL REFACTOR
                     Column(Modifier, Arrangement.Top, Alignment.Start) { 
                         val img = n.child("imageUrl").value?.toString() ?: ""
                         if(img.isNotEmpty()) {
                             AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop)
                         }
-                        // POSITIONAL REFACTOR
                         Column(Modifier.padding(12.dp), Arrangement.Top, Alignment.Start) { 
                             Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold)
                             Text(n.child("message").value.toString()) 
@@ -507,10 +488,8 @@ fun NotificationPage() {
 @Composable
 fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().padding(24.dp), Arrangement.Top, Alignment.Start) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        // POSITIONAL REFACTOR
         Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
             Text("Dark Mode Appearance")
             Switch(checked = isDarkMode, onCheckedChange = onToggle) 
@@ -523,17 +502,13 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
 
 @Composable
 fun AboutUsPage() {
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), Arrangement.Top, Alignment.Start) {
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("\"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho.\"", fontStyle = FontStyle.Italic, color = Color.Gray)
         Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Pioneering the Digital Future of Southern Ethiopia", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
-        
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Section 1: Security & Protection
         Text("A New Standard of Security & User Protection 🛡️", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Bayra Travel is more than a ride-hailing app; it is a Digital Guardian. In a world where safety and trust are paramount, we provide peace of mind through technology:")
@@ -543,10 +518,7 @@ fun AboutUsPage() {
         Text("• Vetted Driver Network: We remove the anonymity of the street. Every driver is a verified professional, creating a culture of accountability and respect.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• The End of the \"Price Conflict\": By automating fares based on distance and logic, we eliminate haggling. This protects the customer’s wallet and the driver’s dignity, fostering a fair marketplace for all.")
-        
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Section 2: Tourism
         Text("Boosting the Tourism Jewel of Arba Minch 🏁✨", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Arba Minch is the heart of Ethiopian tourism, from the 40 Springs to the majesty of Lake Chamo and Nech Sar National Park. Bayra Travel elevates this experience:")
@@ -554,10 +526,7 @@ fun AboutUsPage() {
         Text("• Tourist-Ready Transport: Visitors no longer need to worry about local pricing. They get a professional, predictable, and premium service (Code 3) at the touch of a button.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• Regional Visibility: By digitizing transport, we make the South more accessible to the world, turning Arba Minch into a truly modern tourist hub.")
-        
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Section 3: Digital Strategy
         Text("Aligned with Ethiopia’s Digital 2025/2030 Strategy 🇪🇹🚀", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("We are proud to be a local leader in the national mission to transform Ethiopia into a digital powerhouse:")
@@ -567,10 +536,7 @@ fun AboutUsPage() {
         Text("• Data-Driven Infrastructure: We are collecting the data that will help urban planners improve the roads and logistics of the South for the next generation.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• Green Mobility Readiness: Bayra Travel is built for the future. Our platform is ready to host Ethiopia's first regional Electric Vehicle (EV) fleet, reducing carbon emissions and fuel dependency in our beautiful Land of Peace.")
-        
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Footer Sign-off
         Text("Bayra Travel: Moving Arba Minch into the Digital Age with Honor. 🕊️", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE, modifier = Modifier.padding(bottom = 32.dp))
     }
 }
@@ -587,9 +553,7 @@ fun HistoryPage(name: String) {
             override fun onCancelled(e: DatabaseError) {} 
         }) 
     }
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) { 
-        // POSITIONAL REFACTOR
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
             Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } 
@@ -597,9 +561,7 @@ fun HistoryPage(name: String) {
         LazyColumn { 
             items(items = trips.toList()) { t -> 
                 Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { 
-                    // POSITIONAL REFACTOR
                     Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
-                        // POSITIONAL REFACTOR
                         Column(Modifier, Arrangement.Top, Alignment.Start) {
                             Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold)
                             val driverName = t.child("driverName").value?.toString() ?: "Unknown Driver"
@@ -619,20 +581,16 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
     var n by remember { mutableStateOf(name) }
     var p by remember { mutableStateOf(phone) }
     var e by remember { mutableStateOf(email) }
-    
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(160.dp))
         Text("BAYRA PRESTIGE", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
-        
         OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(40.dp))
-        
         Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { 
             Text("LOGIN", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
         }
@@ -645,7 +603,6 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     val vStart = prefs.getLong("v_start", System.currentTimeMillis())
     var timeLeft by remember { mutableStateOf((600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0)) }
     var code by remember { mutableStateOf("") }
-    
     LaunchedEffect(Unit) { 
         while (timeLeft > 0) { 
             delay(1000L) 
@@ -653,8 +610,6 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
         } 
         onTimeout()
     }
-
-    // POSITIONAL REFACTOR
     Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp))
         Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
@@ -670,25 +625,21 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
 }
 
 // 🔥 THE IMPERIAL LISTENER
-class BayraMessagingService : FirebaseMessagingService() {
-    override fun onMessageReceived(message: RemoteMessage) {
+class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
+    override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
         super.onMessageReceived(message)
-        
         val channelId = "bayra_alerts"
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) {
-            val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
+        val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
-
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle(message.notification?.title ?: "Bayra Prestige")
             .setContentText(message.notification?.body ?: "New Dispatch Update")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
             .build()
-
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }
