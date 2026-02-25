@@ -226,7 +226,8 @@ fun PassengerSuperApp() {
                     gesturesEnabled = false, 
                     drawerContent = {
                         ModalDrawerSheet {
-                            Column(modifier = Modifier.padding(20.dp)) {
+                            // POSITIONAL REFACTOR
+                            Column(Modifier.padding(20.dp), Arrangement.Top, Alignment.Start) {
                                 Icon(imageVector = Icons.Filled.AccountCircle, contentDescription = null, modifier = Modifier.size(64.dp), tint = IMPERIAL_BLUE)
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                 Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
@@ -244,7 +245,8 @@ fun PassengerSuperApp() {
                 ) {
                     Scaffold(
                         topBar = { 
-                            Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // POSITIONAL REFACTOR
+                            Row(Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), Arrangement.Start, Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Text("BAYRA PRESTIGE", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
@@ -328,8 +330,8 @@ fun BookingHub(
 
         if (step == "PICKUP" || step == "DEST") {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                // Defensive Modifier added below
-                Column(modifier = Modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+                // POSITIONAL REFACTOR
+                Column(Modifier, Arrangement.Top, Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) {
                         val dropPath = androidx.compose.ui.graphics.Path().apply {
@@ -347,7 +349,8 @@ fun BookingHub(
 
         if (status != "IDLE") {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) { 
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { 
+                // POSITIONAL REFACTOR
+                Column(Modifier.padding(24.dp), Arrangement.Center, Alignment.CenterHorizontally) { 
                     if (status == "ARRIVED_DEST" || status.startsWith("PAID_")) {
                         Text("መድረሻዎ ደርሰዋል / ARRIVED", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
                         Text("$activePrice ETB", fontSize = 56.sp, fontWeight = FontWeight.ExtraBold)
@@ -359,22 +362,12 @@ fun BookingHub(
                                         val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
-                                        
-                                        // THE CRITICAL HTTP HEADERS
                                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                                         conn.setRequestProperty("Accept", "application/json")
                                         conn.doOutput = true
-                                        
                                         val sanitizedAmount = activePrice.replace("[^0-9]".toRegex(), "")
-                                        val body = JSONObject()
-                                            .put("amount", sanitizedAmount)
-                                            .put("email", email)
-                                            .put("name", name)
-                                            .put("rideId", activeId)
-                                            .toString()
-                                            
+                                        val body = JSONObject().put("amount", sanitizedAmount).put("email", email).put("name", name).put("rideId", activeId).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
-                                        
                                         val responseStr = conn.inputStream.bufferedReader().readText()
                                         JSONObject(responseStr).getJSONObject("data").getString("checkout_url")
                                     } catch (e: Exception) { null }
@@ -417,7 +410,8 @@ fun BookingHub(
                 } 
             }
         } else {
-            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+            // POSITIONAL REFACTOR
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), Arrangement.Top, Alignment.Start) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(items = Tier.values().toList()) { t -> 
                         Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
@@ -427,9 +421,10 @@ fun BookingHub(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (selectedTier.isHr && step == "CONFIRM") {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    // POSITIONAL REFACTOR
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier, Arrangement.Start, Alignment.CenterVertically) {
                             IconButton(onClick = { if(hrCount > 1) onPointChange(pickupPt, destPt, step, selectedTier, hrCount-1) }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                             Text("$hrCount HR", modifier = Modifier.padding(horizontal = 8.dp))
                             IconButton(onClick = { if(hrCount < 12) onPointChange(pickupPt, destPt, step, selectedTier, hrCount+1) }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
@@ -443,7 +438,8 @@ fun BookingHub(
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
                     val f = if(selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt() else (selectedTier.base * 2.5 * 1.15).toInt()
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+                    // POSITIONAL REFACTOR
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
                         Text("$f ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED)
                         TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } 
                     }
@@ -484,18 +480,20 @@ fun NotificationPage() {
             override fun onCancelled(e: DatabaseError) {} 
         }) 
     }
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) {
         Text("Empire Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         LazyColumn { 
             items(items = bulletins.toList()) { n -> 
                 Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { 
-                    // Defensive Modifier added below
-                    Column(modifier = Modifier) { 
+                    // POSITIONAL REFACTOR
+                    Column(Modifier, Arrangement.Top, Alignment.Start) { 
                         val img = n.child("imageUrl").value?.toString() ?: ""
                         if(img.isNotEmpty()) {
                             AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop)
                         }
-                        Column(modifier = Modifier.padding(12.dp)) { 
+                        // POSITIONAL REFACTOR
+                        Column(Modifier.padding(12.dp), Arrangement.Top, Alignment.Start) { 
                             Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold)
                             Text(n.child("message").value.toString()) 
                         } 
@@ -509,9 +507,11 @@ fun NotificationPage() {
 @Composable
 fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().padding(24.dp), Arrangement.Top, Alignment.Start) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+        // POSITIONAL REFACTOR
+        Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
             Text("Dark Mode Appearance")
             Switch(checked = isDarkMode, onCheckedChange = onToggle) 
         }
@@ -523,7 +523,8 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
 
 @Composable
 fun AboutUsPage() {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), Arrangement.Top, Alignment.Start) {
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("\"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho.\"", fontStyle = FontStyle.Italic, color = Color.Gray)
         Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray)
@@ -586,17 +587,20 @@ fun HistoryPage(name: String) {
             override fun onCancelled(e: DatabaseError) {} 
         }) 
     }
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) { 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) { 
+        // POSITIONAL REFACTOR
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
             Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } 
         }
         LazyColumn { 
             items(items = trips.toList()) { t -> 
                 Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { 
-                    Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
-                        // Defensive Modifier added below
-                        Column(modifier = Modifier) {
+                    // POSITIONAL REFACTOR
+                    Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
+                        // POSITIONAL REFACTOR
+                        Column(Modifier, Arrangement.Top, Alignment.Start) {
                             Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold)
                             val driverName = t.child("driverName").value?.toString() ?: "Unknown Driver"
                             Text(driverName, fontSize = 12.sp, color = Color.Gray)
@@ -616,7 +620,8 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
     var p by remember { mutableStateOf(phone) }
     var e by remember { mutableStateOf(email) }
     
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(160.dp))
         Text("BAYRA PRESTIGE", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
@@ -649,7 +654,8 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
         onTimeout()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    // POSITIONAL REFACTOR
+    Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp))
         Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(40.dp))
@@ -671,7 +677,7 @@ class BayraMessagingService : FirebaseMessagingService() {
         val channelId = "bayra_alerts"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) {
             val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
