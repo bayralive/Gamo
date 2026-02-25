@@ -30,7 +30,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("io.coil-kt:coil-compose:2.4.0")
-    implementation("io.coil-kt:coil-compose:2.4.0")
     implementation("com.google.firebase:firebase-database-ktx:20.2.2")
+    //  imperial Voice dependency injected below
+    implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
