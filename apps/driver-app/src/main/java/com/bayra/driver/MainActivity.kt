@@ -1,7 +1,6 @@
 package com.bayra.driver
 
 import android.Manifest
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -376,6 +375,16 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
             modifier = Modifier.fillMaxWidth().height(60.dp), 
             colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
         ) { if (isLoading) CircularProgressIndicator(color = ImperialWhite) else Text(text = "AUTHENTICATE") } 
+        
+        // 🔥 NEW REGISTRATION BUTTON 
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(
+            onClick = { 
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) 
+            }
+        ) {
+            Text(text = "New Driver? Request Access Here", color = Color.LightGray, fontWeight = FontWeight.Bold)
+        }
     } 
 }
 
@@ -444,12 +453,12 @@ class ImmortalBeaconService : Service() {
     override fun onCreate() { 
         super.onCreate()
         val id = "immortal_beacon"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { 
+        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) { 
             val c = NotificationChannel(id, "Driver Active", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(c) 
         }
         val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
+        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
 }
@@ -460,7 +469,7 @@ class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingSer
         super.onMessageReceived(message)
         val channelId = "bayra_alerts"
         val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION.CODES.O) {
             val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
