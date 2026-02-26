@@ -7,13 +7,27 @@ app.use(express.json());
 // ==========================================
 // 1. FIREBASE ADMIN INITIALIZATION
 // ==========================================
-// Render Environment Variable: We parse the private key securely from Render
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
+try {
+    // Check if the variable exists at all
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing from Render Environment Variables!");
+    }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
-});
+    // Parse the JSON securely
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+
+    // Initialize Firebase
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
+    });
+    
+    console.log("✅ Firebase Admin Initialized Successfully.");
+
+} catch (error) {
+    console.error("❌ FIREBASE INIT FAILED:", error.message);
+    console.error("Please check your Render Environment Variables. Make sure the JSON is pasted correctly.");
+}
 
 const db = admin.database();
 
