@@ -120,13 +120,23 @@ fun DriverAppRoot() {
         if (showHistory) { HistoryPage(dName) { showHistory = false } } else { 
             Scaffold(
                 bottomBar = { 
-                    NavigationBar(Modifier, Color.Black) {
-                        NavigationBarItem(currentTab == "HOME", { currentTab = "HOME" }, { Icon(Icons.Filled.Home, null) }, null, { Text("Radar", color = ImperialWhite) })
-                        NavigationBarItem(currentTab == "ACCOUNT", { currentTab = "ACCOUNT" }, { Icon(Icons.Filled.Person, null) }, null, { Text("Vault", color = ImperialWhite) })
+                    NavigationBar(containerColor = Color.Black) {
+                        NavigationBarItem(
+                            selected = (currentTab == "HOME"),
+                            onClick = { currentTab = "HOME" },
+                            icon = { Icon(imageVector = Icons.Filled.Home, contentDescription = null) },
+                            label = { Text(text = "Radar", color = ImperialWhite) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "ACCOUNT"),
+                            onClick = { currentTab = "ACCOUNT" },
+                            icon = { Icon(imageVector = Icons.Filled.Person, contentDescription = null) },
+                            label = { Text(text = "Vault", color = ImperialWhite) }
+                        )
                     }
                 }
             ) { p -> 
-                Box(Modifier.padding(p).fillMaxSize()) {
+                Box(modifier = Modifier.padding(p).fillMaxSize()) {
                     if (currentTab == "HOME") RadarHub(dName, dPhone, debt, credit, activity)
                     else DriverAccountView(dName, debt, credit, { showHistory = true }) { isAuth = false; prefs.edit().clear().apply() }
                 } 
@@ -186,7 +196,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
         onDispose { lm.removeUpdates(ll) }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { c -> 
             MapView(c).apply { 
                 val googleRoadmap = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase("Google-Roadmap", 0, 19, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m")) {
@@ -213,23 +223,27 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
         
-        Column(Modifier.fillMaxSize(), Arrangement.SpaceBetween, Alignment.Start) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
             if (isEnforcerLocked) {
-                Box(Modifier.fillMaxWidth().background(ImperialRed).padding(16.dp)) { 
+                Box(modifier = Modifier.fillMaxWidth().background(ImperialRed).padding(16.dp)) { 
                     Text(text = "THE ENFORCER: Radar Locked.", color = ImperialWhite, fontWeight = FontWeight.Bold) 
                 } 
-            } else { Spacer(Modifier.height(1.dp)) }
+            } else { Spacer(modifier = Modifier.height(1.dp)) }
             
-            Column(Modifier.fillMaxWidth().padding(16.dp), Arrangement.Top, Alignment.Start) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 if(!isRadarOn) {
-                    Button({ isRadarOn = true }, Modifier.fillMaxWidth().height(60.dp), true, RoundedCornerShape(12.dp), ButtonDefaults.buttonColors(EmeraldGreen)) { 
-                        Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) 
+                    Button(
+                        onClick = { isRadarOn = true }, 
+                        modifier = Modifier.fillMaxWidth().height(60.dp), 
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                    ) { 
+                        Text(text = "GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) 
                     }
                 } else {
-                    Surface(Modifier.fillMaxWidth().padding(bottom = 8.dp), RoundedCornerShape(12.dp), Color.Black.copy(0.8f)) { 
-                        Row(Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
+                    Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(0.8f)) { 
+                        Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
                             Text(text = "RADAR ONLINE", color = Color.Green, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Button({ isRadarOn = false }, Modifier, true, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(ImperialRed)) { Text("STOP") } 
+                            Button(onClick = { isRadarOn = false }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text(text = "STOP") } 
                         } 
                     }
                     activeSnap?.let { job ->
@@ -238,66 +252,82 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                         val isOverLimit = distanceKm > 12.0
                         val surcharge = if (isOverLimit) ((distanceKm - 12.0) * 30).toInt() else 0
                         val finalPrice = basePrice + surcharge
-                        Card(Modifier.fillMaxWidth(), RoundedCornerShape(16.dp), CardDefaults.cardColors(if(status == "PAID_CHAPA") EmeraldGreen else ImperialWhite)) {
-                            Column(Modifier.padding(20.dp), Arrangement.Top, Alignment.CenterHorizontally) {
-                                Text("${job.child("pName").value} - $finalPrice ETB", Modifier, if(status == "PAID_CHAPA") ImperialWhite else Color.Black, 24.sp, null, null, null, null, null, null, FontWeight.Bold)
-                                if (status == "ON_TRIP") Text("Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", Modifier, if(isOverLimit) ImperialRed else ImperialBlue, 20.sp, null, FontWeight.Bold)
+                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status == "PAID_CHAPA") EmeraldGreen else ImperialWhite)) {
+                            Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = "${job.child("pName").value} - $finalPrice ETB", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if(status == "PAID_CHAPA") ImperialWhite else Color.Black)
+                                if (status == "ON_TRIP") Text(text = "Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if(isOverLimit) ImperialRed else ImperialBlue)
                                 if (status.startsWith("PAID_")) {
-                                    Icon(Icons.Filled.CheckCircle, null, Modifier.size(48.dp), if(status == "PAID_CHAPA") ImperialWhite else Color.Green)
-                                    Button({ 
-                                        driverRef.runTransaction(object : Transaction.Handler { 
-                                            override fun doTransaction(cd: MutableData): Transaction.Result { 
-                                                if(status == "PAID_CHAPA") { 
-                                                    val curCredit = cd.child("credit").value?.toString()?.toDoubleOrNull() ?: 0.0
-                                                    cd.child("credit").value = curCredit + (finalPrice * 0.85) 
-                                                } else { 
-                                                    val curDebt = cd.child("debt").value?.toString()?.toDoubleOrNull() ?: 0.0
-                                                    cd.child("debt").value = curDebt + (finalPrice * 0.15) 
+                                    Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = if(status == "PAID_CHAPA") ImperialWhite else Color.Green)
+                                    Button(
+                                        onClick = { 
+                                            driverRef.runTransaction(object : Transaction.Handler { 
+                                                override fun doTransaction(cd: MutableData): Transaction.Result { 
+                                                    if(status == "PAID_CHAPA") { 
+                                                        val curCredit = cd.child("credit").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                        cd.child("credit").value = curCredit + (finalPrice * 0.85) 
+                                                    } else { 
+                                                        val curDebt = cd.child("debt").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                        cd.child("debt").value = curDebt + (finalPrice * 0.15) 
+                                                    }
+                                                    return Transaction.success(cd) 
                                                 }
-                                                return Transaction.success(cd) 
-                                            }
-                                            override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) { 
-                                                if (c) { ref.child(job.key!!).child("status").setValue("COMPLETED"); distanceKm = 0.0 } 
-                                            } 
-                                        }) 
-                                    }, Modifier.fillMaxWidth().padding(top=10.dp), true, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(Color.Black)) { Text("FINISH", color = ImperialWhite) }
+                                                override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) { 
+                                                    if (c) { ref.child(job.key!!).child("status").setValue("COMPLETED"); distanceKm = 0.0 } 
+                                                } 
+                                            }) 
+                                        }, 
+                                        modifier = Modifier.fillMaxWidth().padding(top=10.dp), 
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
+                                    ) { Text(text = "FINISH", color = ImperialWhite) }
                                 } else {
-                                    Row(Modifier.fillMaxWidth().padding(top=10.dp), Arrangement.spacedBy(8.dp), Alignment.Top) { 
+                                    Row(modifier = Modifier.fillMaxWidth().padding(top=10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                                         val isOnTrip = status == "ON_TRIP"
-                                        Button({ 
-                                            val dLat = job.child(if(isOnTrip) "dLat" else "pLat").value?.toString()?.toDoubleOrNull() ?: 0.0
-                                            val dLon = job.child(if(isOnTrip) "dLon" else "pLon").value?.toString()?.toDoubleOrNull() ?: 0.0
-                                            activity?.launchNav(dLat, dLon) 
-                                        }, Modifier.weight(1f), true, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(ImperialBlue)) { Text("NAV") }
-                                        IconButton({ ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, Modifier.background(Color.Black, CircleShape)) { Icon(Icons.Filled.Call, null, tint = Color.White) } 
+                                        Button(
+                                            onClick = { 
+                                                val dLat = job.child(if(isOnTrip) "dLat" else "pLat").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                val dLon = job.child(if(isOnTrip) "dLon" else "pLon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                                                activity?.launchNav(dLat, dLon) 
+                                            }, 
+                                            modifier = Modifier.weight(1f), 
+                                            colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)
+                                        ) { Text(text = "NAV") }
+                                        IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) { Icon(imageVector = Icons.Filled.Call, contentDescription = null, tint = Color.White) } 
                                     }
                                     val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
-                                    Button({ ref.child(job.key!!).child("status").setValue(next) }, Modifier.fillMaxWidth().padding(top=10.dp), true, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(ImperialRed)) { Text(next, fontWeight = FontWeight.Bold) }
+                                    Button(
+                                        onClick = { ref.child(job.key!!).child("status").setValue(next) }, 
+                                        modifier = Modifier.fillMaxWidth().padding(top=10.dp), 
+                                        colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
+                                    ) { Text(text = next, fontWeight = FontWeight.Bold) }
                                 }
                             }
                         }
-                    } ?: LazyColumn(Modifier.heightIn(0.dp, 250.dp), null, Arrangement.Top, Alignment.Start) { 
+                    } ?: LazyColumn(modifier = Modifier.heightIn(max = 250.dp)) { 
                         items(items = jobs) { snap -> 
-                            Card(Modifier.fillMaxWidth().padding(bottom=8.dp), RoundedCornerShape(12.dp), CardDefaults.cardColors(ImperialWhite)) { 
-                                Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { 
-                                    Column(Modifier, Arrangement.Top, Alignment.Start) { 
-                                        Text(snap.child("pName").value?.toString() ?: "", Modifier, Color.Black, 18.sp, null, null, null, null, null, null, FontWeight.Bold)
-                                        Text("${snap.child("price").value} ETB", Modifier, Color.DarkGray) 
+                            Card(modifier = Modifier.fillMaxWidth().padding(bottom=8.dp), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
+                                Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+                                    Column { 
+                                        Text(text = snap.child("pName").value?.toString() ?: "", fontWeight=FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                                        Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
-                                    Button({ 
-                                        if (!isEnforcerLocked) { 
-                                            ref.child(snap.key!!).runTransaction(object : Transaction.Handler { 
-                                                override fun doTransaction(cd: MutableData): Transaction.Result { 
-                                                    if(cd.child("status").value?.toString() == "REQUESTED") { 
-                                                        cd.child("status").value = "ACCEPTED"; cd.child("driverName").value = driverName; cd.child("dPhone").value = driverPhone
-                                                        return Transaction.success(cd) 
+                                    Button(
+                                        onClick = { 
+                                            if (!isEnforcerLocked) { 
+                                                ref.child(snap.key!!).runTransaction(object : Transaction.Handler { 
+                                                    override fun doTransaction(cd: MutableData): Transaction.Result { 
+                                                        if(cd.child("status").value?.toString() == "REQUESTED") { 
+                                                            cd.child("status").value = "ACCEPTED"; cd.child("driverName").value = driverName; cd.child("dPhone").value = driverPhone
+                                                            return Transaction.success(cd) 
+                                                        }
+                                                        return Transaction.abort() 
                                                     }
-                                                    return Transaction.abort() 
-                                                }
-                                                override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {} 
-                                            }) 
-                                        }
-                                    }, Modifier, !isEnforcerLocked, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(if (isEnforcerLocked) Color.Gray else ImperialBlue)) { Text("ACCEPT") } 
+                                                    override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {} 
+                                                }) 
+                                            }
+                                        }, 
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (isEnforcerLocked) Color.Gray else ImperialBlue), 
+                                        enabled = !isEnforcerLocked
+                                    ) { Text(text = "ACCEPT") } 
                                 } 
                             } 
                         } 
@@ -315,43 +345,65 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().background(ImperialBlue).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) { 
-        Image(painterResource(R.drawable.logo_driver), null, Modifier.size(150.dp))
-        Spacer(Modifier.height(32.dp)); Text("IMPERIAL GUARD", Modifier, ImperialWhite, 24.sp, null, null, null, null, null, null, FontWeight.Black); Spacer(Modifier.height(24.dp))
-        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), true, false, null, null, { Text("Name", color = Color.LightGray) })
+    Column(modifier = Modifier.fillMaxSize().background(ImperialBlue).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { 
+        Image(painterResource(id = R.drawable.logo_driver), contentDescription = null, modifier = Modifier.size(150.dp))
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(text = "IMPERIAL GUARD", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ImperialWhite)
+        Spacer(modifier = Modifier.height(24.dp))
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(text = "Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), true, false, null, null, { Text("Password", color = Color.LightGray) }, null, null, false, PasswordVisualTransformation(), KeyboardOptions(androidx.compose.ui.text.input.KeyboardCapitalization.None, false, KeyboardType.Password))
-        Spacer(Modifier.height(32.dp))
-        Button({ 
-            if (name.isNotEmpty() && password.isNotEmpty()) { 
-                isLoading = true; FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name).addListenerForSingleValueEvent(object : ValueEventListener { 
-                    override fun onDataChange(s: DataSnapshot) { 
-                        isLoading = false; val dbPass = s.child("password").value?.toString() ?: ""
-                        if (dbPass == password) onLoginSuccess(name, s.child("phone").value?.toString() ?: "0") else Toast.makeText(ctx, "Invalid", Toast.LENGTH_LONG).show() 
-                    }
-                    override fun onCancelled(e: DatabaseError) { isLoading = false } 
-                }) 
-            }
-        }, Modifier.fillMaxWidth().height(60.dp), true, RoundedCornerShape(12.dp), ButtonDefaults.buttonColors(ImperialRed)) { if (isLoading) CircularProgressIndicator(Modifier, ImperialWhite) else Text("AUTHENTICATE") } 
+        OutlinedTextField(
+            value = password, 
+            onValueChange = { password = it }, 
+            label = { Text(text = "Password", color = Color.LightGray) }, 
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(
+            onClick = { 
+                if (name.isNotEmpty() && password.isNotEmpty()) { 
+                    isLoading = true; FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name).addListenerForSingleValueEvent(object : ValueEventListener { 
+                        override fun onDataChange(s: DataSnapshot) { 
+                            isLoading = false; val dbPass = s.child("password").value?.toString() ?: ""
+                            if (dbPass == password) onLoginSuccess(name, s.child("phone").value?.toString() ?: "0") else Toast.makeText(ctx, "Invalid", Toast.LENGTH_LONG).show() 
+                        }
+                        override fun onCancelled(e: DatabaseError) { isLoading = false } 
+                    }) 
+                }
+            }, 
+            modifier = Modifier.fillMaxWidth().height(60.dp), 
+            colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
+        ) { if (isLoading) CircularProgressIndicator(color = ImperialWhite) else Text(text = "AUTHENTICATE") } 
     } 
 }
 
 @Composable 
 fun DriverAccountView(n: String, d: Int, c: Int, onH: () -> Unit, onL: () -> Unit) { 
     val net = c - d
-    Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5)), Arrangement.Top, Alignment.Start) { 
-        Row(Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(16.dp, 0.dp), Arrangement.Start, Alignment.CenterVertically) { Text("Dual-Vault Ledger", Modifier, Color.White, 20.sp, null, null, null, null, null, null, FontWeight.Black) }
-        Column(Modifier.padding(24.dp), Arrangement.Top, Alignment.CenterHorizontally) { 
-            Icon(Icons.Filled.Person, null, Modifier.size(80.dp), ImperialBlue); Text(n, Modifier, Color.Black, 28.sp, null, null, null, null, null, null, FontWeight.Bold); Spacer(Modifier.height(24.dp))
-            Card(Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), CardDefaults.cardColors(ImperialWhite)) { 
-                Column(Modifier.padding(16.dp), Arrangement.Top, Alignment.Start) { 
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) { Text("Credit: +$c ETB", Modifier, EmeraldGreen); Text("Debt: -$d ETB", Modifier, ImperialRed) }
-                    Divider(Modifier.padding(0.dp, 12.dp))
-                    Text("Net Standing: $net ETB", Modifier, Color.Black, 16.sp, null, null, null, null, null, null, FontWeight.Black) 
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) { 
+        Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) { 
+            Text(text = "Dual-Vault Ledger", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp) 
+        }
+        Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { 
+            Icon(imageVector = Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(80.dp), tint = ImperialBlue)
+            Text(text = n, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(24.dp))
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
+                Column(modifier = Modifier.padding(16.dp)) { 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { 
+                        Text(text = "Credit: +$c ETB", color = EmeraldGreen)
+                        Text(text = "Debt: -$d ETB", color = ImperialRed) 
+                    }
+                    Divider(modifier = Modifier.padding(vertical = 12.dp))
+                    Text(text = "Net Standing: $net ETB", fontWeight = FontWeight.Black) 
                 } 
             }
-            Spacer(Modifier.height(32.dp)); Button({ onH() }, Modifier.fillMaxWidth(), true, RoundedCornerShape(8.dp)) { Text("History") }
-            Spacer(Modifier.height(16.dp)); Button({ onL() }, Modifier.fillMaxWidth(), true, RoundedCornerShape(8.dp), ButtonDefaults.buttonColors(Color.DarkGray)) { Text("Logout") } 
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(onClick = { onH() }, modifier = Modifier.fillMaxWidth()) { Text(text = "History") }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { onL() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text(text = "Logout") } 
         } 
     } 
 }
@@ -369,9 +421,21 @@ fun HistoryPage(n: String, onB: () -> Unit) {
             override fun onCancelled(e: DatabaseError) {} 
         }) 
     }
-    Column(Modifier.fillMaxSize().background(Color.White), Arrangement.Top, Alignment.Start) { 
-        Row(Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(16.dp, 0.dp), Arrangement.Start, Alignment.CenterVertically) { IconButton(onB) { Icon(Icons.Filled.ArrowBack, null, tint = Color.White) }; Text("History", color = Color.White) }
-        LazyColumn(Modifier.fillMaxSize().padding(16.dp), null, Arrangement.Top, Alignment.Start) { items(items = h) { snap -> Card(Modifier.fillMaxWidth().padding(0.dp, 0.dp, 0.dp, 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text(snap.child("pName").value?.toString()?:""); Text("${snap.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
+    Column(modifier = Modifier.fillMaxSize().background(Color.White)) { 
+        Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(ImperialBlue).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) { 
+            IconButton(onClick = onB) { Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = null, tint = Color.White) }
+            Text(text = "History", color = Color.White) 
+        }
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) { 
+            items(items = h) { snap -> 
+                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) { 
+                    Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+                        Text(text = snap.child("pName").value?.toString() ?: "")
+                        Text(text = "${snap.child("price").value} ETB", fontWeight = FontWeight.Bold) 
+                    } 
+                } 
+            } 
+        }
     } 
 }
 
@@ -387,7 +451,7 @@ class ImmortalBeaconService : Service() {
         val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = Service.START_STICKY 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
 }
 
 // 🔥 THE IMPERIAL LISTENER
