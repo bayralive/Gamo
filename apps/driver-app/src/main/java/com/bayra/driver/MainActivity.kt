@@ -11,7 +11,6 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.RingtoneManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.preference.PreferenceManager
@@ -104,7 +103,7 @@ fun DriverAppRoot() {
     LaunchedEffect(isAuth) {
         if (isAuth) {
             val serviceIntent = Intent(ctx, ImmortalBeaconService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
         }
     }
 
@@ -456,12 +455,12 @@ class ImmortalBeaconService : Service() {
     override fun onCreate() { 
         super.onCreate()
         val id = "immortal_beacon"
-        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) { 
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) { 
             val c = NotificationChannel(id, "Driver Active", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(c) 
         }
         val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
 }
@@ -472,7 +471,7 @@ class BayraMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         val channelId = "bayra_alerts"
         val notificationManager = this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
