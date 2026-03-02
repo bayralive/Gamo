@@ -1,6 +1,8 @@
 package com.bayra.customer
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -8,10 +10,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -86,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -107,6 +112,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import com.bayra.customer.R
+import com.google.firebase.messaging.FirebaseMessaging
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(0xFF1A237E)
@@ -138,6 +144,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
+    // Required to close the app on double-tap
+    val activity = ctx as? ComponentActivity
     val prefs = remember { ctx.getSharedPreferences("bayra_p_v230", Context.MODE_PRIVATE) }
     
     var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
@@ -157,9 +165,47 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
+    // 🔥 NEW: Smart Back Handler Logic
+    var lastBackPressTime by remember { mutableStateOf(0L) }
+    
+    BackHandler {
+        if (isAuth) {
+            // Priority 1: Navigation Drawer Sections
+            if (currentView != "MAP") {
+                currentView = "MAP"
+            } 
+            // Priority 2: Reset Booking Flow (If selecting dest or confirming)
+            else if (step != "PICKUP") {
+                step = "PICKUP"
+                pickupPt = null
+                destPt = null
+            } 
+            // Priority 3: Double Tap to Exit
+            else {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime < 2000) {
+                    activity?.finish()
+                } else {
+                    lastBackPressTime = currentTime
+                    Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            // Login Screen: Double Tap to Exit
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastBackPressTime < 2000) {
+                activity?.finish()
+            } else {
+                lastBackPressTime = currentTime
+                Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Ensures FCM token is registered whenever the user is authenticated
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -508,7 +554,10 @@ fun AboutUsPage() {
         Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Pioneering the Digital Future of Southern Ethiopia", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
+        
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // Section 1: Security & Protection
         Text("A New Standard of Security & User Protection 🛡️", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Bayra Travel is more than a ride-hailing app; it is a Digital Guardian. In a world where safety and trust are paramount, we provide peace of mind through technology:")
@@ -518,7 +567,10 @@ fun AboutUsPage() {
         Text("• Vetted Driver Network: We remove the anonymity of the street. Every driver is a verified professional, creating a culture of accountability and respect.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• The End of the \"Price Conflict\": By automating fares based on distance and logic, we eliminate haggling. This protects the customer’s wallet and the driver’s dignity, fostering a fair marketplace for all.")
+        
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // Section 2: Tourism
         Text("Boosting the Tourism Jewel of Arba Minch 🏁✨", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("Arba Minch is the heart of Ethiopian tourism, from the 40 Springs to the majesty of Lake Chamo and Nech Sar National Park. Bayra Travel elevates this experience:")
@@ -526,7 +578,10 @@ fun AboutUsPage() {
         Text("• Tourist-Ready Transport: Visitors no longer need to worry about local pricing. They get a professional, predictable, and premium service (Code 3) at the touch of a button.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• Regional Visibility: By digitizing transport, we make the South more accessible to the world, turning Arba Minch into a truly modern tourist hub.")
+        
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // Section 3: Digital Strategy
         Text("Aligned with Ethiopia’s Digital 2025/2030 Strategy 🇪🇹🚀", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
         Spacer(modifier = Modifier.height(8.dp))
         Text("We are proud to be a local leader in the national mission to transform Ethiopia into a digital powerhouse:")
@@ -536,7 +591,10 @@ fun AboutUsPage() {
         Text("• Data-Driven Infrastructure: We are collecting the data that will help urban planners improve the roads and logistics of the South for the next generation.")
         Spacer(modifier = Modifier.height(4.dp))
         Text("• Green Mobility Readiness: Bayra Travel is built for the future. Our platform is ready to host Ethiopia's first regional Electric Vehicle (EV) fleet, reducing carbon emissions and fuel dependency in our beautiful Land of Peace.")
+        
         Spacer(modifier = Modifier.height(24.dp))
+        
+        // Footer Sign-off
         Text("Bayra Travel: Moving Arba Minch into the Digital Age with Honor. 🕊️", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE, modifier = Modifier.padding(bottom = 32.dp))
     }
 }
@@ -581,16 +639,19 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
     var n by remember { mutableStateOf(name) }
     var p by remember { mutableStateOf(phone) }
     var e by remember { mutableStateOf(email) }
+    
     Column(Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(160.dp))
         Text("BAYRA PRESTIGE", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
         Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
+        
         OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(40.dp))
+        
         Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { 
             Text("LOGIN", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
         }
@@ -603,6 +664,7 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     val vStart = prefs.getLong("v_start", System.currentTimeMillis())
     var timeLeft by remember { mutableStateOf((600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0)) }
     var code by remember { mutableStateOf("") }
+    
     LaunchedEffect(Unit) { 
         while (timeLeft > 0) { 
             delay(1000L) 
@@ -610,6 +672,7 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
         } 
         onTimeout()
     }
+
     Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp))
         Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
@@ -625,21 +688,25 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
 }
 
 // 🔥 THE IMPERIAL LISTENER
-class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
-    override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
+class BayraMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+        
         val channelId = "bayra_alerts"
-        val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle(message.notification?.title ?: "Bayra Prestige")
             .setContentText(message.notification?.body ?: "New Dispatch Update")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
             .build()
+
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }
