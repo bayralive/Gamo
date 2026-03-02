@@ -45,7 +45,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import com.google.firebase.database.*
+import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.FirebaseMessagingService
+import com.google.firebase.messaging.RemoteMessage
 import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -89,7 +93,7 @@ fun DriverAppRoot() {
 
     LaunchedEffect(isAuth) {
         if (isAuth && dName.isNotEmpty()) {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/fcmToken").setValue(task.result)
                 }
@@ -376,7 +380,6 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
         ) { if (isLoading) CircularProgressIndicator(color = ImperialWhite) else Text(text = "AUTHENTICATE") } 
         
-        // 🔥 NEW REGISTRATION BUTTON 
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(
             onClick = { 
@@ -464,21 +467,21 @@ class ImmortalBeaconService : Service() {
 }
 
 // 🔥 THE IMPERIAL LISTENER
-class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
-    override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
+class BayraMessagingService : FirebaseMessagingService() {
+    override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
         val channelId = "bayra_alerts"
-        val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION.CODES.O) {
-            val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
+        val notificationManager = this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION.CODES.O) {
+            val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle(message.notification?.title ?: "🚨 New Dispatch!")
             .setContentText(message.notification?.body ?: "Open Radar to view.")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setAutoCancel(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
