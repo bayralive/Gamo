@@ -11,11 +11,13 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.preference.PreferenceManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -89,6 +91,28 @@ fun DriverAppRoot() {
     var showHistory by remember { mutableStateOf(false) }
     var debt by remember { mutableStateOf(0) }
     var credit by remember { mutableStateOf(0) }
+    
+    // 🔥 NEW: Double-Back-To-Close Logic
+    var lastBackPressTime by remember { mutableStateOf(0L) }
+
+    BackHandler {
+        if (showHistory) {
+            // Level 3: If viewing history, go back to Vault
+            showHistory = false
+        } else if (isAuth && currentTab == "ACCOUNT") {
+            // Level 2: If on Vault tab, go back to Radar (Home)
+            currentTab = "HOME"
+        } else {
+            // Level 1: If on Radar or Login screen, handle Double Tap
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastBackPressTime < 2000) {
+                activity?.finish() // Close the app
+            } else {
+                lastBackPressTime = currentTime
+                Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     LaunchedEffect(isAuth) {
         if (isAuth && dName.isNotEmpty()) {
