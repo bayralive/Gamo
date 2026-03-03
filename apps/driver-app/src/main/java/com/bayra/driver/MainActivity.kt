@@ -92,25 +92,15 @@ fun DriverAppRoot() {
     var debt by remember { mutableStateOf(0) }
     var credit by remember { mutableStateOf(0) }
     
-    // 🔥 NEW: Double-Back-To-Close Logic
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
     BackHandler {
-        if (showHistory) {
-            // Level 3: If viewing history, go back to Vault
-            showHistory = false
-        } else if (isAuth && currentTab == "ACCOUNT") {
-            // Level 2: If on Vault tab, go back to Radar (Home)
-            currentTab = "HOME"
-        } else {
-            // Level 1: If on Radar or Login screen, handle Double Tap
+        if (showHistory) { showHistory = false } 
+        else if (isAuth && currentTab == "ACCOUNT") { currentTab = "HOME" } 
+        else {
             val currentTime = System.currentTimeMillis()
-            if (currentTime - lastBackPressTime < 2000) {
-                activity?.finish() // Close the app
-            } else {
-                lastBackPressTime = currentTime
-                Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show()
-            }
+            if (currentTime - lastBackPressTime < 2000) { activity?.finish() } 
+            else { lastBackPressTime = currentTime; Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show() }
         }
     }
 
@@ -316,7 +306,10 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                             }, 
                                             modifier = Modifier.weight(1f), 
                                             colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)
-                                        ) { Text(text = "NAV") }
+                                        ) { 
+                                            // 🔥 FIXED DYNAMIC TEXT 
+                                            Text(text = if(isOnTrip) "NAV DEST" else "NAV PICKUP") 
+                                        }
                                         IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) { Icon(imageVector = Icons.Filled.Call, contentDescription = null, tint = Color.White) } 
                                     }
                                     val next = when(status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
@@ -490,21 +483,21 @@ class ImmortalBeaconService : Service() {
 }
 
 // 🔥 THE IMPERIAL LISTENER
-class BayraMessagingService : FirebaseMessagingService() {
-    override fun onMessageReceived(message: RemoteMessage) {
+class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
+    override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
         super.onMessageReceived(message)
         val channelId = "bayra_alerts"
-        val notificationManager = this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
+            val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle(message.notification?.title ?: "🚨 New Dispatch!")
             .setContentText(message.notification?.body ?: "Open Radar to view.")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
             .build()
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
