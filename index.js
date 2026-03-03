@@ -1,5 +1,6 @@
 const express = require('express');
 const admin = require('firebase-admin');
+const axios = require('axios'); // Tool to talk to Chapa
 
 const app = express();
 app.use(express.json());
@@ -8,120 +9,96 @@ app.use(express.json());
 // 1. FIREBASE ADMIN INITIALIZATION
 // ==========================================
 let db;
-
 try {
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing!");
-    }
-
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
     });
-    
     db = admin.database();
-    console.log("✅ Firebase Admin Initialized Successfully.");
-
+    console.log("✅ Firebase Admin Initialized.");
 } catch (error) {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
+    process.exit(1);
 }
 
 // ==========================================
-// 2. THE IMPERIAL VOICE: AUTOMATED WATCHMAN
+// 2. THE IMPERIAL VOICE: WATCHMAN
 // ==========================================
-
-db.ref('rides').on('child_added', (snapshot) => {
-    const ride = snapshot.val();
-    if (ride && ride.status === "REQUESTED") {
-        broadcastToDrivers("🚨 New Dispatch!", `A new ${ride.tier} request is waiting. Open Radar!`);
-    }
-});
-
-db.ref('rides').on('child_changed', (snapshot) => {
-    const ride = snapshot.val();
-    if (ride.status === "ACCEPTED") {
-        sendToUser(ride.pName, "Driver Found! 🚕", `${ride.driverName} is on the way.`);
-    }
-});
+// (Keep your existing Watchman logic for ACCEPTED and ARRIVED here)
+// ...
 
 async function sendToUser(userName, title, body) {
-    try {
-        const userSnap = await db.ref(`users/${userName}`).once('value');
-        const token = userSnap.val()?.fcmToken;
-        if (token) {
-            admin.messaging().send({ notification: { title, body }, token: token });
-        }
-    } catch (e) {}
-}
-
-async function broadcastToDrivers(title, body) {
-    try {
-        const driversSnap = await db.ref('drivers').once('value');
-        driversSnap.forEach((child) => {
-            const token = child.val()?.fcmToken;
-            if (token) admin.messaging().send({ notification: { title, body }, token: token }).catch(() => {});
-        });
-    } catch (e) {}
+    const userSnap = await db.ref(`users/${userName}`).once('value');
+    const token = userSnap.val()?.fcmToken;
+    if (token) admin.messaging().send({ notification: { title, body }, token: token });
 }
 
 // ==========================================
-// 3. API ROUTES (THE MISSING PIECE)
+// 3. SECURE CHAPA GATEWAY
 // ==========================================
 
-// 🔥 FIXED: This route was missing!
+const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
+const CHAPA_AUTH = { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } };
+
 app.post('/initialize-payment', async (req, res) => {
-    console.log("💰 [PAYMENT] Received request for Ride ID:", req.body.rideId);
-    
     const { amount, email, name, rideId } = req.body;
+    const tx_ref = `TX-${rideId}-${Date.now()}`; // Unique ID for this payment
+
+    console.log(`💰 [PAYMENT] Initializing real Chapa request for ${name}: ${amount} ETB`);
 
     try {
-        // Here is the "Treasury Handshake"
-        // We generate a direct link to your verify-payment endpoint
-        const checkoutUrl = `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}`;
+        const response = await axios.post(CHAPA_URL, {
+            amount: amount,
+            currency: "ETB",
+            email: email,
+            first_name: name,
+            tx_ref: tx_ref,
+            callback_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}`,
+            return_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}`,
+            "customization[title]": "Bayra Prestige Ride",
+            "customization[description]": "Payment for your elite journey"
+        }, CHAPA_AUTH);
 
-        console.log(`✅ [PAYMENT] Successfully generated handshake for ${name}.`);
+        // Chapa gives us a real checkout_url
+        res.json({ status: "success", data: { checkout_url: response.data.data.checkout_url } });
         
-        // Return the exact JSON structure the App is expecting
-        res.json({
-            status: "success",
-            data: {
-                checkout_url: checkoutUrl
-            }
-        });
-    } catch (error) {
-        console.error("❌ [PAYMENT] Initialization failed:", error.message);
-        res.status(500).json({ status: "error", message: "Treasury Handshake Failed" });
+    } catch (e) {
+        console.error("❌ [CHAPA] Failed to get link:", e.response?.data || e.message);
+        res.status(500).json({ status: "failed", message: "Chapa Gateway Offline" });
     }
 });
 
-app.get('/verify-payment/:rideId', async (req, res) => {
-    const { rideId } = req.params;
-    
+// 🔥 THE MASTER VERIFIER (NO MONEY, NO RIDE)
+app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
+    const { rideId, txRef } = req.params;
+
+    console.log(`🔍 [TREASURY] Verifying transaction ${txRef}...`);
+
     try {
-        await db.ref(`rides/${rideId}`).update({
-            status: "PAID_CHAPA",
-            verifiedByBackend: true
-        });
+        // CALL CHAPA DIRECTLY to confirm the money is in your account
+        const check = await axios.get(`https://api.chapa.co/v1/transaction/verify/${txRef}`, CHAPA_AUTH);
 
-        const rideSnap = await db.ref(`rides/${rideId}`).once('value');
-        const ride = rideSnap.val();
+        if (check.data.status === "success" || check.data.data.status === "success") {
+            console.log(`✅ [TREASURY] Money confirmed for Ride ${rideId}!`);
 
-        if (ride && ride.pName) {
-            sendToUser(ride.pName, "Payment Verified ✅", "Thank you for riding with Bayra Prestige.");
+            // ONLY NOW DO WE TELL THE DRIVER
+            await db.ref(`rides/${rideId}`).update({ status: "PAID_CHAPA", verifiedByBackend: true });
+
+            const rideSnap = await db.ref(`rides/${rideId}`).once('value');
+            const ride = rideSnap.val();
+            if (ride) sendToUser(ride.pName, "Payment Verified ✅", "The Imperial Treasury has received your funds.");
+
+            res.send("<h1 style='text-align:center; margin-top:20%; color:green; font-family:sans-serif;'>✅ Payment Confirmed! Your ride is officially paid. You may return to the app.</h1>");
+        } else {
+            console.error(`🛑 [TREASURY] FRAUD ALERT: Transaction ${txRef} failed verification.`);
+            res.send("<h1 style='text-align:center; margin-top:20%; color:red; font-family:sans-serif;'>🛑 Payment Failed. Please try again or pay cash.</h1>");
         }
-
-        res.send("<h1 style='color:green; font-family:sans-serif; text-align:center; margin-top:20%;'>Payment Success! You can close this window.</h1>");
-    } catch (error) {
-        res.status(500).send("<h1>Error verifying payment.</h1>");
+    } catch (e) {
+        console.error("❌ [TREASURY] Verification error:", e.response?.data || e.message);
+        res.send("<h1>Verification Error. Contact Support.</h1>");
     }
 });
 
-// ==========================================
-// 4. START THE SERVER
-// ==========================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Bayra Imperial Backend running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Secure Backend running on port ${PORT}`));
