@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -53,6 +54,7 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -113,7 +115,6 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
-    // 🔥 BACK NAVIGATION LOGIC
     var lastBackPressTime by remember { mutableStateOf(0L) }
     
     BackHandler {
@@ -138,7 +139,7 @@ fun PassengerSuperApp() {
 
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -228,6 +229,9 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     var activePrice by remember { mutableStateOf("0") }; var mapRef by remember { mutableStateOf<MapView?>(null) }
     var isGeneratingLink by remember { mutableStateOf(false) }
     val greenHandLollipop = remember { createGreenHandLollipop(ctx) }
+    
+    // 🔥 Location Overlay to move map to user
+    var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
@@ -251,7 +255,15 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     }
                 }
                 setTileSource(googleRoadmap); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); overlays.add(loc); mapRef = this 
+                
+                // 🔥 GEOGRAPHY LOCK: Horn of Africa only
+                val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0)
+                setScrollableAreaLimitDouble(hornOfAfrica)
+                minZoomLevel = 5.0
+
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); overlays.add(loc)
+                locationOverlay = loc
+                mapRef = this 
             } 
         }, update = { view ->
             view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
@@ -259,6 +271,23 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
             destPt?.let { Marker(view).apply { position = it; icon = greenHandLollipop; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) }.also { m -> view.overlays.add(m) } }
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
+
+        // 🔥 FLOATING "MY LOCATION" BUTTON
+        if (status == "IDLE") {
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
+                FloatingActionButton(
+                    onClick = {
+                        val myLoc = locationOverlay?.myLocation
+                        if (myLoc != null) { mapRef?.controller?.animateTo(myLoc) } 
+                        else { Toast.makeText(ctx, "GPS searching...", Toast.LENGTH_SHORT).show() }
+                    },
+                    containerColor = Color.White,
+                    contentColor = IMPERIAL_BLUE,
+                    shape = CircleShape,
+                    modifier = Modifier.size(50.dp)
+                ) { Icon(Icons.Filled.MyLocation, "My Location") }
+            }
+        }
 
         if (step == "PICKUP" || step == "DEST") {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -287,7 +316,9 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                                         val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json; charset=UTF-8"); setRequestProperty("Accept", "application/json"); doOutput = true }
-                                        val body = JSONObject().put("amount", activePrice).put("email", email).put("name", name).put("rideId", activeId).toString()
+                                        // Use numbers only for amount
+                                        val amountNum = activePrice.replace("[^0-9]".toRegex(), "")
+                                        val body = JSONObject().put("amount", amountNum).put("email", email).put("name", name).put("rideId", activeId).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
                                         JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("data").getString("checkout_url")
                                     } catch (e: Exception) { null }
@@ -423,7 +454,7 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     val vStart = prefs.getLong("v_start", System.currentTimeMillis()); var timeLeft by remember { mutableStateOf((600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0)) }; var code by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { while (timeLeft > 0) { delay(1000L); timeLeft = (600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0) }; onTimeout() }
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(modifier = Modifier.height(40.dp))
+        Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(modifier = Modifier.height(40.dp))
         OutlinedTextField(code, { if(it.length <= 4) code = it }, label = { Text("Enter 4-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Button(onClick = { onVerify(code) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), shape = RoundedCornerShape(16.dp)) { Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
     }
 }
