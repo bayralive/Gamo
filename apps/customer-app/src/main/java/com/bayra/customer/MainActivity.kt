@@ -139,7 +139,7 @@ fun PassengerSuperApp() {
 
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -230,7 +230,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     var isGeneratingLink by remember { mutableStateOf(false) }
     val greenHandLollipop = remember { createGreenHandLollipop(ctx) }
     
-    // 🔥 Location Overlay to move map to user
     var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
     LaunchedEffect(activeId) {
@@ -272,7 +271,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
 
-        // 🔥 FLOATING "MY LOCATION" BUTTON
+        // 🔥 FLOATING "MY LOCATION" BUTTON (Using guaranteed safe icon)
         if (status == "IDLE") {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
                 FloatingActionButton(
@@ -285,7 +284,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     contentColor = IMPERIAL_BLUE,
                     shape = CircleShape,
                     modifier = Modifier.size(50.dp)
-                ) { Icon(Icons.Filled.MyLocation, "My Location") }
+                ) { Icon(Icons.Filled.Place, "My Location") }
             }
         }
 
@@ -316,11 +315,11 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                                         val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json; charset=UTF-8"); setRequestProperty("Accept", "application/json"); doOutput = true }
-                                        // Use numbers only for amount
-                                        val amountNum = activePrice.replace("[^0-9]".toRegex(), "")
-                                        val body = JSONObject().put("amount", amountNum).put("email", email).put("name", name).put("rideId", activeId).toString()
+                                        val cleanPrice = activePrice.replace("[^0-9]".toRegex(), "")
+                                        val body = JSONObject().put("amount", cleanPrice).put("email", email).put("name", name).put("rideId", activeId).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
-                                        JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("data").getString("checkout_url")
+                                        val responseStr = conn.inputStream.bufferedReader().readText()
+                                        JSONObject(responseStr).getJSONObject("data").getString("checkout_url")
                                     } catch (e: Exception) { null }
                                 }
                                 withContext(Dispatchers.Main) {
