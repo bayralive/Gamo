@@ -172,6 +172,9 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
     var distanceKm by remember { mutableStateOf(0.0) }
     var lastLoc by remember { mutableStateOf<Location?>(null) }
     val isEnforcerLocked = (debt - credit) >= 500
+    
+    // 🔥 Track jobs the driver has manually declined
+    var declinedJobs by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(jobs.size) { if(isRadarOn && jobs.isNotEmpty() && activeSnap == null) activity?.playAlarm() }
     LaunchedEffect(Unit) {
@@ -182,7 +185,10 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                 var passengerCancelled = false
                 s.children.forEach { snap -> 
                     val status = snap.child("status").value?.toString() ?: ""
-                    if (status == "REQUESTED") { list.add(snap) } 
+                    if (status == "REQUESTED") { 
+                        // Only show if not declined
+                        if (!declinedJobs.contains(snap.key)) list.add(snap) 
+                    } 
                     else if (snap.child("driverName").value?.toString() == driverName) {
                         if (status == "CANCELLED") { passengerCancelled = true } 
                         else if (status != "COMPLETED") { current = snap }
@@ -268,12 +274,16 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                         val isOverLimit = distanceKm > 12.0
                         val surcharge = if (isOverLimit) ((distanceKm - 12.0) * 30).toInt() else 0
                         val finalPrice = basePrice + surcharge
-                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status == "PAID_CHAPA") EmeraldGreen else ImperialWhite)) {
+                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status == "PAID_CHAPA" || status == "PAID_CASH") EmeraldGreen else ImperialWhite)) {
                             Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(text = "${job.child("pName").value} - $finalPrice ETB", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if(status == "PAID_CHAPA") ImperialWhite else Color.Black)
+                                Text(text = "${job.child("pName").value} - $finalPrice ETB", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if(status.startsWith("PAID_")) ImperialWhite else Color.Black)
                                 if (status == "ON_TRIP") Text(text = "Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if(isOverLimit) ImperialRed else ImperialBlue)
+                                
                                 if (status.startsWith("PAID_")) {
-                                    Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = if(status == "PAID_CHAPA") ImperialWhite else Color.Green)
+                                    Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = ImperialWhite)
+                                    // 🔥 GUIDANCE: Dynamic Button Text
+                                    val finishBtnText = if(status == "PAID_CASH") "COLLECT CASH & FINISH" else "FINISH & CLOSE"
+                                    
                                     Button(
                                         onClick = { 
                                             driverRef.runTransaction(object : Transaction.Handler { 
@@ -294,7 +304,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         }, 
                                         modifier = Modifier.fillMaxWidth().padding(top=10.dp), 
                                         colors = ButtonDefaults.buttonColors(containerColor = Color.Black)
-                                    ) { Text(text = "FINISH", color = ImperialWhite) }
+                                    ) { Text(text = finishBtnText, color = ImperialWhite) }
                                 } else {
                                     Row(modifier = Modifier.fillMaxWidth().padding(top=10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                                         val isOnTrip = status == "ON_TRIP"
@@ -307,7 +317,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                             modifier = Modifier.weight(1f), 
                                             colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)
                                         ) { 
-                                            // 🔥 FIXED DYNAMIC TEXT 
                                             Text(text = if(isOnTrip) "NAV DEST" else "NAV PICKUP") 
                                         }
                                         IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) { Icon(imageVector = Icons.Filled.Call, contentDescription = null, tint = Color.White) } 
@@ -316,8 +325,21 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                     Button(
                                         onClick = { ref.child(job.key!!).child("status").setValue(next) }, 
                                         modifier = Modifier.fillMaxWidth().padding(top=10.dp), 
-                                        colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
+                                        colors = ButtonDefaults.buttonColors(containerColor = if(next == "ARRIVED_DEST") EmeraldGreen else ImperialRed)
                                     ) { Text(text = next, fontWeight = FontWeight.Bold) }
+                                    
+                                    // 🔥 STRATEGIC CANCELLATION: Only visible before Trip Starts
+                                    if (status == "ACCEPTED" || status == "ARRIVED") {
+                                        TextButton(
+                                            onClick = { 
+                                                ref.child(job.key!!).child("status").setValue("CANCELLED")
+                                                distanceKm = 0.0
+                                            },
+                                            modifier = Modifier.padding(top = 8.dp)
+                                        ) {
+                                            Text(text = "CANCEL RIDE", color = ImperialRed, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -325,28 +347,39 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                         items(items = jobs) { snap -> 
                             Card(modifier = Modifier.fillMaxWidth().padding(bottom=8.dp), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
                                 Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
-                                    Column { 
+                                    Column(modifier = Modifier.weight(1f)) { 
                                         Text(text = snap.child("pName").value?.toString() ?: "", fontWeight=FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
                                         Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
-                                    Button(
-                                        onClick = { 
-                                            if (!isEnforcerLocked) { 
-                                                ref.child(snap.key!!).runTransaction(object : Transaction.Handler { 
-                                                    override fun doTransaction(cd: MutableData): Transaction.Result { 
-                                                        if(cd.child("status").value?.toString() == "REQUESTED") { 
-                                                            cd.child("status").value = "ACCEPTED"; cd.child("driverName").value = driverName; cd.child("dPhone").value = driverPhone
-                                                            return Transaction.success(cd) 
+                                    Row {
+                                        // 🔥 DECLINE BUTTON
+                                        IconButton(
+                                            onClick = { declinedJobs = declinedJobs + snap.key!! },
+                                            modifier = Modifier.background(Color.LightGray.copy(alpha=0.4f), CircleShape).size(40.dp)
+                                        ) { Icon(Icons.Filled.Close, null, tint = Color.Gray) }
+                                        
+                                        Spacer(Modifier.width(8.dp))
+                                        
+                                        Button(
+                                            onClick = { 
+                                                if (!isEnforcerLocked) { 
+                                                    ref.child(snap.key!!).runTransaction(object : Transaction.Handler { 
+                                                        override fun doTransaction(cd: MutableData): Transaction.Result { 
+                                                            if(cd.child("status").value?.toString() == "REQUESTED") { 
+                                                                cd.child("status").value = "ACCEPTED"; cd.child("driverName").value = driverName; cd.child("dPhone").value = driverPhone
+                                                                return Transaction.success(cd) 
+                                                            }
+                                                            return Transaction.abort() 
                                                         }
-                                                        return Transaction.abort() 
-                                                    }
-                                                    override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {} 
-                                                }) 
-                                            }
-                                        }, 
-                                        colors = ButtonDefaults.buttonColors(containerColor = if (isEnforcerLocked) Color.Gray else ImperialBlue), 
-                                        enabled = !isEnforcerLocked
-                                    ) { Text(text = "ACCEPT") } 
+                                                        override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {} 
+                                                    }) 
+                                                }
+                                            }, 
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (isEnforcerLocked) Color.Gray else ImperialBlue), 
+                                            enabled = !isEnforcerLocked,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) { Text(text = "ACCEPT") } 
+                                    }
                                 } 
                             } 
                         } 
@@ -479,7 +512,7 @@ class ImmortalBeaconService : Service() {
         val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = Service.START_STICKY 
 }
 
 // 🔥 THE IMPERIAL LISTENER
