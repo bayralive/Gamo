@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
 fun DriverAppRoot() {
     val ctx = LocalContext.current
     val activity = ctx as? MainActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_d_v230", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v230", Context.MODE_PRIVATE) }
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
@@ -174,10 +174,8 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
     var lastLoc by remember { mutableStateOf<Location?>(null) }
     val isEnforcerLocked = (debt - credit) >= 500
     
-    // 🔥 Declined list for instant UI removal
     var declinedJobs by remember { mutableStateOf(setOf<String>()) }
 
-    // 🔥 Derived State: This filters jobs instantly whenever rawJobs or declinedJobs changes
     val jobs by remember {
         derivedStateOf { rawJobs.filter { !declinedJobs.contains(it.key) } }
     }
@@ -192,10 +190,21 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                 var passengerCancelled = false
                 s.children.forEach { snap -> 
                     val status = snap.child("status").value?.toString() ?: ""
+                    
+                    // 🔥 SMART DISPATCH FILTERING
+                    val reservedFor = snap.child("reservedFor").value?.toString()
+                    val reservedUntil = snap.child("reservedUntil").value?.toString()?.toLongOrNull() ?: 0L
+
                     if (status == "REQUESTED") { 
-                        list.add(snap) 
-                    } else if (snap.child("driverName").value?.toString() == driverName) {
-                        if (status == "CANCELLED") { passengerCancelled = true } 
+                        val isForMe = reservedFor == null || reservedFor == driverName
+                        val isExpired = reservedUntil < System.currentTimeMillis()
+                        
+                        if (isForMe || isExpired) {
+                            list.add(snap) 
+                        }
+                    } 
+                    else if (snap.child("driverName").value?.toString() == driverName) {
+                        if (status == "CANCELLED" || status == "CANCELLED_BY_PASSENGER") { passengerCancelled = true } 
                         else if (status != "COMPLETED") { current = snap }
                     }
                 }
@@ -260,7 +269,20 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 if(!isRadarOn) {
                     Button(
-                        onClick = { isRadarOn = true }, 
+                        onClick = { 
+                            // 🔥 SECURITY: BAN CHECK
+                            FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").get().addOnSuccessListener { s ->
+                                val isBanned = s.child("isBanned").value as? Boolean ?: false
+                                val banUntil = s.child("banUntil").value as? Long ?: 0L
+                                
+                                if (isBanned && System.currentTimeMillis() < banUntil) {
+                                    val hoursLeft = (banUntil - System.currentTimeMillis()) / (1000 * 60 * 60)
+                                    Toast.makeText(ctx, "SUSPENDED: $hoursLeft hours remaining.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    isRadarOn = true 
+                                }
+                            }
+                        }, 
                         modifier = Modifier.fillMaxWidth().height(60.dp), 
                         colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                     ) { 
@@ -362,7 +384,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
                                     Row {
-                                        // 🔥 THE DECLINE BUTTON: Working Logic
                                         IconButton(
                                             onClick = { declinedJobs = declinedJobs + snap.key!! },
                                             modifier = Modifier.background(Color.LightGray.copy(alpha=0.4f), CircleShape).size(40.dp)
@@ -464,11 +485,16 @@ fun DriverAccountView(n: String, d: Int, c: Int, onH: () -> Unit, onL: () -> Uni
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
                 Column(modifier = Modifier.padding(16.dp)) { 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { 
-                        Text(text = "Credit: +$c ETB", color = EmeraldGreen)
-                        Text(text = "Debt: -$d ETB", color = ImperialRed) 
+                        Text(text = "Credit Vault (Chapa 85%)", color = EmeraldGreen, fontWeight = FontWeight.Bold)
+                        Text(text = "+$c ETB", color = EmeraldGreen, fontWeight = FontWeight.Bold) 
                     }
                     Divider(modifier = Modifier.padding(vertical = 12.dp))
-                    Text(text = "Net Standing: $net ETB", fontWeight = FontWeight.Black) 
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { 
+                        Text(text = "Debt Vault (Cash 15%)", color = ImperialRed, fontWeight = FontWeight.Bold)
+                        Text(text = "-$d ETB", color = ImperialRed, fontWeight = FontWeight.Bold) 
+                    }
+                    Divider(modifier = Modifier.padding(vertical = 12.dp))
+                    Text(text = "Net Standing: $net ETB", fontWeight = FontWeight.Black, fontSize = 18.sp) 
                 } 
             }
             Spacer(modifier = Modifier.height(32.dp))
