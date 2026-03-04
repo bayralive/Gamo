@@ -27,11 +27,10 @@ try {
 
 } catch (error) {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
-    // Don't kill the process, just log it so Render stays up for debugging
 }
 
 // ==========================================
-// 2. THE IMPERIAL VOICE: AUTOMATED WATCHMAN
+// 2. THE IMPERIAL VOICE & CLEANER
 // ==========================================
 
 // 🚨 Listen for NEW rides -> Alert All Drivers
@@ -55,8 +54,33 @@ db.ref('rides').on('child_changed', (snapshot) => {
     }
 });
 
+// 🔥 THE CLEANER: Patrolls every 60 seconds to delete old requests (5-min timeout)
+setInterval(async () => {
+    const now = Date.now();
+    const timeoutLimit = 5 * 60 * 1000; // 5 Minutes
+    
+    try {
+        const ridesSnap = await db.ref('rides').once('value');
+        ridesSnap.forEach((child) => {
+            const ride = child.val();
+            // If ride is still REQUESTED and is older than 5 minutes
+            if (ride.status === "REQUESTED" && ride.time && (now - ride.time) > timeoutLimit) {
+                console.log(`[Cleaner] Ride ${child.key} expired. Removing from Registry.`);
+                
+                // Notify Passenger of timeout
+                sendToUser(ride.pName, "No Drivers Found ⚠️", "We couldn't find a driver for your request. Please try again.");
+                
+                // Delete from Database
+                child.ref.remove();
+            }
+        });
+    } catch (e) {
+        console.error("[Cleaner] Error during patrol:", e.message);
+    }
+}, 60000); 
+
 // Helper: Send push notification to a specific passenger
-async function sendToUser(userName, title, body) {
+async fun sendToUser(userName, title, body) {
     try {
         const userSnap = await db.ref(`users/${userName}`).once('value');
         const token = userSnap.val()?.fcmToken;
@@ -73,7 +97,7 @@ async function sendToUser(userName, title, body) {
 }
 
 // Helper: Broadcast push notification to all online drivers
-async function broadcastToDrivers(title, body) {
+async fun broadcastToDrivers(title, body) {
     try {
         const driversSnap = await db.ref('drivers').once('value');
         driversSnap.forEach((child) => {
@@ -102,7 +126,6 @@ app.post('/initialize-payment', async (req, res) => {
     const { amount, email, name, rideId } = req.body;
     const tx_ref = `TX-${rideId}-${Date.now()}`;
 
-    // 🔥 This log is now safely inside the function where 'name' and 'amount' are defined
     console.log(`💰 [TREASURY] Initializing Chapa for ${name}: ${amount} ETB`);
 
     try {
