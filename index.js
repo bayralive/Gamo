@@ -5,6 +5,9 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
+// Record exactly when the server started to ignore "Ghost" old rides
+const SERVER_START_TIME = Date.now();
+
 // ==========================================
 // 1. FIREBASE ADMIN INITIALIZATION
 // ==========================================
@@ -23,9 +26,8 @@ try {
     });
     
     db = admin.database();
-    console.log("✅ Firebase Admin Initialized Successfully.");
+    console.log("✅ Firebase Admin Connected.");
 
-    // 🔥 THE FIX: Only start the Watchman AFTER the DB is connected
     activateImperialWatchman();
 
 } catch (error) {
@@ -39,32 +41,33 @@ try {
 function activateImperialWatchman() {
     console.log("🛡️ Imperial Watchman is now on patrol...");
 
-    // 🚨 Listen for NEW rides -> Alert All Drivers
-    // Added .limitToLast(1) so it doesn't blast old notifications on restart
-    db.ref('rides').limitToLast(1).on('child_added', (snapshot) => {
+    // 🚨 Listen for NEW ride requests
+    db.ref('rides').on('child_added', (snapshot) => {
         const ride = snapshot.val();
-        // Only notify if it's a brand new REQUESTED ride (created within last 30 seconds)
-        const isFresh = ride.time && (Date.now() - ride.time) < 30000;
         
-        if (ride && ride.status === "REQUESTED" && isFresh) {
-            console.log(`[Watchman] New Fresh Request from ${ride.pName}. Alerting drivers.`);
-            broadcastToDrivers("🚨 New Dispatch!", `A new ${ride.tier} request is waiting. Open Radar!`);
+        // Logic: Only notify if the ride was created AFTER the server turned on
+        // This stops old rides from triggering alerts on restart.
+        if (ride && ride.status === "REQUESTED" && ride.time > (SERVER_START_TIME - 10000)) {
+            console.log(`[Watchman] New Fresh Request from ${ride.pName}. Blasting to drivers.`);
+            broadcastToDrivers("🚨 New Dispatch!", `New ${ride.tier} request waiting. Open Radar!`);
         }
     });
 
-    // 🔔 Listen for UPDATED rides -> Alert Passenger
+    // 🔔 Listen for status changes (Accepted, Arrived, etc)
     db.ref('rides').on('child_changed', (snapshot) => {
         const ride = snapshot.val();
         const status = ride.status;
 
         if (status === "ACCEPTED") {
+            console.log(`[Watchman] Ride accepted by ${ride.driverName}. Notifying passenger.`);
             sendToUser(ride.pName, "Driver Found! 🚕", `${ride.driverName} is on the way.`);
         } else if (status === "ARRIVED") {
+            console.log(`[Watchman] Driver arrived for ${ride.pName}.`);
             sendToUser(ride.pName, "Driver Arrived! 🏁", "Your driver is waiting outside.");
         }
     });
 
-    // 🧹 THE CLEANER: Patrols every 60 seconds
+    // 🧹 THE CLEANER: Patrolls every 60 seconds
     setInterval(async () => {
         const now = Date.now();
         const timeoutLimit = 5 * 60 * 1000; 
@@ -82,41 +85,55 @@ function activateImperialWatchman() {
     }, 60000);
 }
 
-// Helper: Send push notification to a specific passenger
+// Helper: Send push notification with HIGH PRIORITY for Android
 async function sendToUser(userName, title, body) {
     try {
         const userSnap = await db.ref(`users/${userName}`).once('value');
         const token = userSnap.val()?.fcmToken;
         if (token) {
-            await admin.messaging().send({
+            const message = {
                 notification: { title, body },
                 token: token,
-                android: { priority: "high" }
-            });
-            console.log(`[Voice] Notification sent to ${userName}`);
+                android: {
+                    priority: "high", // Forces the phone to wake up
+                    notification: { sound: "default", channelId: "bayra_alerts" }
+                }
+            };
+            await admin.messaging().send(message);
+            console.log(`✅ [Voice] Notified passenger ${userName}`);
         }
     } catch (error) {
-        console.error(`[Voice] Error notifying user ${userName}:`, error.message);
+        console.error(`❌ [Voice] Error notifying user ${userName}:`, error.message);
     }
 }
 
-// Helper: Broadcast push notification to all online drivers
+// Helper: Broadcast to all drivers with HIGH PRIORITY
 async function broadcastToDrivers(title, body) {
     try {
         const driversSnap = await db.ref('drivers').once('value');
+        let count = 0;
+        
+        const promises = [];
         driversSnap.forEach((child) => {
             const driver = child.val();
             if (driver.fcmToken) {
-                admin.messaging().send({
+                const message = {
                     notification: { title, body },
                     token: driver.fcmToken,
-                    android: { priority: "high" }
-                }).catch(() => {}); 
+                    android: {
+                        priority: "high",
+                        notification: { sound: "default", channelId: "bayra_alerts" }
+                    }
+                };
+                promises.push(admin.messaging().send(message));
+                count++;
             }
         });
-        console.log(`[Voice] Dispatch broadcasted to all drivers.`);
+        
+        await Promise.all(promises);
+        console.log(`✅ [Voice] Dispatch broadcasted to ${count} drivers.`);
     } catch (error) {
-        console.error("[Voice] Broadcast failed:", error.message);
+        console.error("❌ [Voice] Broadcast failed:", error.message);
     }
 }
 
@@ -159,7 +176,7 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
             const rideSnap = await db.ref(`rides/${rideId}`).once('value');
             const ride = rideSnap.val();
             if (ride) sendToUser(ride.pName, "Payment Verified ✅", "The Treasury has confirmed your payment.");
-            res.send("<h1 style='text-align:center; margin-top:20%; color:green;'>✅ Payment Confirmed! Return to app.</h1>");
+            res.send("<h1 style='text-align:center; margin-top:20%; color:green; font-family:sans-serif;'>✅ Payment Confirmed! Return to app.</h1>");
         } else {
             res.send("<h1 style='text-align:center; margin-top:20%; color:red;'>🛑 Payment Not Verified.</h1>");
         }
