@@ -139,7 +139,7 @@ fun PassengerSuperApp() {
 
     LaunchedEffect(isAuth) {
         if (isAuth && pName.isNotEmpty()) {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$pName/fcmToken").setValue(task.result)
                 }
@@ -156,7 +156,7 @@ fun PassengerSuperApp() {
                         prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
                         pName = n; pPhone = p; pEmail = e; isVerifying = true 
                         
-                        // 🔥 UPGRADED: 6-Digit PIN
+                        // 🔥 6-Digit PIN
                         val pin = (100000..999999).random().toString()
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
                         scope.launch(Dispatchers.IO) { 
@@ -203,7 +203,9 @@ fun PassengerSuperApp() {
                     Scaffold(topBar = { 
                             Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
-                                Spacer(Modifier.width(16.dp)); Text("BAYRA PRESTIGE", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
+                                Spacer(Modifier.width(16.dp)); 
+                                // 🔥 NAME CHANGE
+                                Text("Bayra Travel", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
                             }
                         }
                     ) { padding ->
@@ -232,7 +234,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     var isGeneratingLink by remember { mutableStateOf(false) }
     val greenHandLollipop = remember { createGreenHandLollipop(ctx) }
     
-    // 🔥 GPS Overlay tracking
     var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
     LaunchedEffect(activeId) {
@@ -253,12 +254,14 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
             MapView(c).apply { 
                 val googleRoadmap = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase("Google-Roadmap", 0, 19, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m")) {
                     override fun getTileURLString(pMapTileIndex: Long): String {
-                        return baseUrl + "&x=" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) + "&y=" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) + "&z=" + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex)
+                        return baseUrl + "&x=" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) +
+                               "&y=" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) +
+                               "&z=" + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex)
                     }
                 }
                 setTileSource(googleRoadmap); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
                 
-                // 🔥 GEOGRAPHY LOCK: Horn of Africa only
+                // 🔥 GEOGRAPHY LOCK
                 val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0)
                 setScrollableAreaLimitDouble(hornOfAfrica)
                 minZoomLevel = 5.0
@@ -274,20 +277,20 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
 
-        // 🔥 NEW: FLOATING "MY LOCATION" BUTTON
+        // 🔥 FLOATING "MY LOCATION" BUTTON
         if (status == "IDLE") {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
                 FloatingActionButton(
                     onClick = {
                         val myLoc = locationOverlay?.myLocation
                         if (myLoc != null) { mapRef?.controller?.animateTo(myLoc) } 
-                        else { Toast.makeText(ctx, "Locating...", Toast.LENGTH_SHORT).show() }
+                        else { Toast.makeText(ctx, "GPS searching...", Toast.LENGTH_SHORT).show() }
                     },
                     containerColor = Color.White,
                     contentColor = IMPERIAL_BLUE,
                     shape = CircleShape,
                     modifier = Modifier.size(50.dp)
-                ) { Icon(Icons.Filled.Place, "Center GPS") }
+                ) { Icon(Icons.Filled.Place, "My Location") }
             }
         }
 
@@ -318,11 +321,11 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                                         val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json; charset=UTF-8"); setRequestProperty("Accept", "application/json"); doOutput = true }
-                                        // Clean price string for backend
-                                        val amountOnly = activePrice.replace("[^0-9]".toRegex(), "")
-                                        val body = JSONObject().put("amount", amountOnly).put("email", email).put("name", name).put("rideId", activeId).toString()
+                                        val cleanPrice = activePrice.replace("[^0-9]".toRegex(), "")
+                                        val body = JSONObject().put("amount", cleanPrice).put("email", email).put("name", name).put("rideId", activeId).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
-                                        JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("data").getString("checkout_url")
+                                        val responseStr = conn.inputStream.bufferedReader().readText()
+                                        JSONObject(responseStr).getJSONObject("data").getString("checkout_url")
                                     } catch (e: Exception) { null }
                                 }
                                 withContext(Dispatchers.Main) {
@@ -351,7 +354,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                 } 
             }
         } else {
-            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), horizontalAlignment = Alignment.Start) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(items = Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } 
                 }
@@ -375,7 +378,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("$f ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED); TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset") } }
                     Button(onClick = { 
                         val id = "R_${System.currentTimeMillis()}"; 
-                        // 🔥 TYPO FIXED: changed '->' to 'to'
                         FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to f.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0, "time" to System.currentTimeMillis()))
                         activeId = id; prefs.edit().putString("active_id", id).apply() 
                     }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { Text("BOOK RIDE", fontWeight = FontWeight.ExtraBold) }
@@ -443,7 +445,10 @@ fun HistoryPage(name: String) {
 fun LoginView(name: String, phone: String, email: String, onLogin: (String, String, String) -> Unit) {
     var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
     Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); Text("BAYRA PRESTIGE", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
+        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); 
+        // 🔥 NAME CHANGE
+        Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); 
+        Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
         OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
         OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
         OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(40.dp))
@@ -458,6 +463,7 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     LaunchedEffect(Unit) { while (timeLeft > 0) { delay(1000L); timeLeft = (600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0) }; onTimeout() }
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(modifier = Modifier.height(40.dp))
+        // 🔥 UPGRADED: 6-Digit PIN UI
         OutlinedTextField(code, { if(it.length <= 6) code = it }, label = { Text("Enter 6-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Button(onClick = { onVerify(code) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), shape = RoundedCornerShape(16.dp)) { Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
     }
 }
@@ -473,7 +479,7 @@ class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingSer
             notificationManager.createNotificationChannel(channel)
         }
         val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
-            .setContentTitle(message.notification?.title ?: "Bayra Prestige")
+            .setContentTitle(message.notification?.title ?: "Bayra Travel")
             .setContentText(message.notification?.body ?: "New Dispatch Update")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
