@@ -115,6 +115,7 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
 
+    // 🔥 SMART BACK NAVIGATION
     var lastBackPressTime by remember { mutableStateOf(0L) }
     
     BackHandler {
@@ -156,7 +157,7 @@ fun PassengerSuperApp() {
                         prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
                         pName = n; pPhone = p; pEmail = e; isVerifying = true 
                         
-                        // 🔥 6-Digit PIN
+                        // 🔥 6-DIGIT PIN GENERATION
                         val pin = (100000..999999).random().toString()
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
                         scope.launch(Dispatchers.IO) { 
@@ -175,7 +176,7 @@ fun PassengerSuperApp() {
                                 if (s.value?.toString() == code) { 
                                     prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply()
                                     isAuth = true; isVerifying = false 
-                                } else { Toast.makeText(ctx, "Invalid Registry PIN", Toast.LENGTH_SHORT).show() }
+                                } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
                             }
                             override fun onCancelled(e: DatabaseError) {}
                         })
@@ -204,12 +205,11 @@ fun PassengerSuperApp() {
                             Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
                                 Spacer(Modifier.width(16.dp)); 
-                                // 🔥 NAME CHANGE
                                 Text("Bayra Travel", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
                             }
                         }
                     ) { padding ->
-                        Box(Modifier.padding(padding)) {
+                        Box(modifier = Modifier.padding(padding)) {
                             when(currentView) {
                                 "MAP" -> BookingHub(name = pName, email = pEmail, phone = pPhone, prefs = prefs, pickupPt = pickupPt, destPt = destPt, selectedTier = selectedTier, step = step, hrCount = hrCount, onPointChange = { p, d, s, t, h -> pickupPt = p; destPt = d; step = s; selectedTier = t; hrCount = h })
                                 "ORDERS" -> HistoryPage(name = pName)
@@ -249,7 +249,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { c -> 
             MapView(c).apply { 
                 val googleRoadmap = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase("Google-Roadmap", 0, 19, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m")) {
@@ -261,7 +261,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                 }
                 setTileSource(googleRoadmap); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
                 
-                // 🔥 GEOGRAPHY LOCK
+                // 🔥 GEOGRAPHY LOCK: Horn of Africa
                 val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0)
                 setScrollableAreaLimitDouble(hornOfAfrica)
                 minZoomLevel = 5.0
@@ -279,7 +279,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
 
         // 🔥 FLOATING "MY LOCATION" BUTTON
         if (status == "IDLE") {
-            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
+            Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
                 FloatingActionButton(
                     onClick = {
                         val myLoc = locationOverlay?.myLocation
@@ -295,14 +295,14 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
         }
 
         if (step == "PICKUP" || step == "DEST") {
-            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(modifier = Modifier, horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) {
                         val dropPath = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, size.height); cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f); cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) }
                         drawPath(dropPath, IMPERIAL_RED); drawCircle(Color.White, size.width / 6f, androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 3f))
                     }
-                    Spacer(Modifier.height(50.dp))
+                    Spacer(modifier = Modifier.height(50.dp))
                 }
             }
         }
@@ -321,8 +321,8 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                                         val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json; charset=UTF-8"); setRequestProperty("Accept", "application/json"); doOutput = true }
-                                        val cleanPrice = activePrice.replace("[^0-9]".toRegex(), "")
-                                        val body = JSONObject().put("amount", cleanPrice).put("email", email).put("name", name).put("rideId", activeId).toString()
+                                        val amountOnly = activePrice.replace("[^0-9]".toRegex(), "")
+                                        val body = JSONObject().put("amount", amountOnly).put("email", email).put("name", name).put("rideId", activeId).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
                                         val responseStr = conn.inputStream.bufferedReader().readText()
                                         JSONObject(responseStr).getJSONObject("data").getString("checkout_url")
@@ -345,26 +345,31 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                             Text("አሽከርካሪ: $driverName", Modifier.padding(top = 10.dp))
                             Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$driverPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color.Black)) { Icon(Icons.Filled.Call, null); Text(" ደውል / CALL") }
                         }
+                        // 🔥 DATA RECOVERY & ANTI-CHEAT CANCEL LOGIC
                         Button(onClick = { 
                             if (status == "REQUESTED") { FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").removeValue() } 
-                            else { FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId/status").setValue("CANCELLED") }
+                            else if (status == "ACCEPTED" || status == "ARRIVED") {
+                                FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").updateChildren(mapOf("status" to "CANCELLED_BY_PASSENGER", "cancelTime" to System.currentTimeMillis()))
+                            }
                             status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply(); onPointChange(null, null, "PICKUP", Tier.COMFORT, 1) 
-                        }, modifier = Modifier.padding(top = 40.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_RED)) { Text("CANCEL RIDE") }
+                        }, modifier = Modifier.padding(top = 40.dp), enabled = (status != "ON_TRIP"), colors = ButtonDefaults.buttonColors(containerColor = if(status == "ON_TRIP") Color.Gray else IMPERIAL_RED)) { 
+                            Text(if(status == "ON_TRIP") "TRIP IN PROGRESS" else "CANCEL RIDE") 
+                        }
                     }
                 } 
             }
         } else {
-            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp)) {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), horizontalAlignment = Alignment.Start) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
                     items(items = Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } 
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Duration:", fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { if(hrCount > 1) onPointChange(pickupPt, destPt, step, selectedTier, hrCount-1) }) { Text("−", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
-                            Text("$hrCount HR", Modifier.padding(horizontal = 8.dp))
+                            Text("$hrCount HR", modifier = Modifier.padding(horizontal = 8.dp))
                             IconButton(onClick = { if(hrCount < 12) onPointChange(pickupPt, destPt, step, selectedTier, hrCount+1) }) { Text("+", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
@@ -399,7 +404,7 @@ fun NotificationPage() {
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("bulletins").addValueEventListener(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { bulletins.clear(); s.children.forEach { bulletins.add(it) } }; override fun onCancelled(e: DatabaseError) {} }) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) {
         Text("Empire Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
-        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(horizontalAlignment = Alignment.Start) { 
+        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(modifier = Modifier, horizontalAlignment = Alignment.Start) { 
                         val img = n.child("imageUrl").value?.toString() ?: ""
                         if(img.isNotEmpty()) { AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop) }
                         Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.Start) { Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(n.child("message").value.toString()) } 
@@ -422,7 +427,7 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
 @Composable
 fun AboutUsPage() {
     Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.Start) {
-        Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); Text("\"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho.\"", fontStyle = FontStyle.Italic, color = Color.Gray); Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray); Spacer(Modifier.height(8.dp)); Text("Pioneering the Digital Future of Southern Ethiopia", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(24.dp))
+        Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); Text("\"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho.\"", fontStyle = FontStyle.Italic, color = Color.Gray); Text("Peace supports us, and Wisdom leads us.", fontStyle = FontStyle.Italic, color = Color.Gray); Spacer(Modifier.height(8.dp)); Text("Pioneering the Digital Future of Southern Ethiopia", fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(24.dp))
         Text("A New Standard of Security & User Protection 🛡️", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(8.dp)); Text("Bayra Travel is more than a ride-hailing app; it is a Digital Guardian. In a world where safety and trust are paramount, we provide peace of mind through technology:"); Spacer(Modifier.height(8.dp)); Text("• Live Trip Monitoring: Every journey is tracked via high-precision GPS. Whether it is a student traveling at night or a tourist exploring our city, their location is always secure in our system."); Spacer(Modifier.height(4.dp)); Text("• Vetted Driver Network: We remove the anonymity of the street. Every driver is a verified professional, creating a culture of accountability and respect."); Spacer(Modifier.height(4.dp)); Text("• The End of the \"Price Conflict\": By automating fares based on distance and logic, we eliminate haggling. This protects the customer’s wallet and the driver’s dignity, fostering a fair marketplace for all."); Spacer(Modifier.height(24.dp))
         Text("Boosting the Tourism Jewel of Arba Minch 🏁✨", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(8.dp)); Text("Arba Minch is the heart of Ethiopian tourism, from the 40 Springs to the majesty of Lake Chamo and Nech Sar National Park. Bayra Travel elevates this experience:"); Spacer(Modifier.height(8.dp)); Text("• Tourist-Ready Transport: Visitors no longer need to worry about local pricing. They get a professional, predictable, and premium service (Code 3) at the touch of a button."); Spacer(Modifier.height(4.dp)); Text("• Regional Visibility: By digitizing transport, we make the South more accessible to the world, turning Arba Minch into a truly modern tourist hub."); Spacer(Modifier.height(24.dp))
         Text("Aligned with Ethiopia’s Digital 2025/2030 Strategy 🇪🇹🚀", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(Modifier.height(8.dp)); Text("We are proud to be a local leader in the national mission to transform Ethiopia into a digital powerhouse:"); Spacer(Modifier.height(8.dp)); Text("• The Cashless Shift: Through our secure online payment integration, we are driving the transition to a cashless society, making financial transactions transparent and modern."); Spacer(Modifier.height(4.dp)); Text("• Data-Driven Infrastructure: We are collecting the data that will help urban planners improve the roads and logistics of the South for the next generation."); Spacer(Modifier.height(4.dp)); Text("• Green Mobility Readiness: Bayra Travel is built for the future. Our platform is ready to host Ethiopia's first regional Electric Vehicle (EV) fleet, reducing carbon emissions and fuel dependency in our beautiful Land of Peace."); Spacer(Modifier.height(24.dp))
@@ -436,7 +441,7 @@ fun HistoryPage(name: String) {
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }.reversed()) }; override fun onCancelled(e: DatabaseError) {} }) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) { 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold); IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }
-        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column(horizontalAlignment = Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
+        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier, horizontalAlignment = Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
     }
 }
 
@@ -446,12 +451,11 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
     var n by remember { mutableStateOf(name) }; var p by remember { mutableStateOf(phone) }; var e by remember { mutableStateOf(email) }
     Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); 
-        // 🔥 NAME CHANGE
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); 
         Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
-        OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
-        OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(16.dp))
-        OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(Modifier.height(40.dp))
+        OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(40.dp))
         Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@")) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { Text("LOGIN", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
     }
 }
@@ -463,7 +467,6 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     LaunchedEffect(Unit) { while (timeLeft > 0) { delay(1000L); timeLeft = (600 - (System.currentTimeMillis() - vStart)/1000).coerceAtLeast(0) }; onTimeout() }
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, modifier = Modifier.size(120.dp)); Text("SILENT REGISTRY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE); Spacer(modifier = Modifier.height(40.dp)); Text(String.format("%02d:%02d", timeLeft/60, timeLeft%60), fontSize = 64.sp, fontWeight = FontWeight.ExtraBold, color = if(timeLeft < 60) IMPERIAL_RED else Color.Black); Text("Check your SMS or Email for the code", fontSize = 14.sp, color = Color.Gray); Spacer(modifier = Modifier.height(40.dp))
-        // 🔥 UPGRADED: 6-Digit PIN UI
         OutlinedTextField(code, { if(it.length <= 6) code = it }, label = { Text("Enter 6-Digit Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Button(onClick = { onVerify(code) }, modifier = Modifier.fillMaxWidth().height(60.dp).padding(top = 20.dp), shape = RoundedCornerShape(16.dp)) { Text("VALIDATE ACCESS", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
     }
 }
