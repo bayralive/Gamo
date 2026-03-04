@@ -1,56 +1,49 @@
-# 🛡️ Bayra Prestige: Mobility Reimagined
+# 🛡️ Bayra Prestige: Premium Mobility Infrastructure
 > **"Sarotethai nuna maaddo, Aadhidatethai nuna kaaletho."**  
-> *Peace supports us, and Wisdom leads us.*
+> *Arba Minch, Ethiopia*
 
-Bayra Prestige is an elite, full-stack ride-hailing ecosystem purpose-built for the digital transformation of Arba Minch and Southern Ethiopia. Comprising a high-performance **Passenger App**, a specialized **Driver Terminal**, and a secure **Cloud Backend**, this system defines the new standard for luxury, safety, and reliability.
-
----
-
-## 🏙️ The Imperial Core: Key Features
-
-### 🔹 The Passenger Experience (`customer-app`)
-- **Precise Dispatch:** Interactive map locked to the **Horn of Africa** for maximum performance and regional focus.
-- **Imperial Tiers:** Choose from a vetted fleet including **Bajaj Hr**, **Comfort Cars**, and **Code 3** premium services.
-- **Secure Treasury:** Integrated online payments via **Chapa**, ensuring a cashless and transparent transaction.
-- **Silent Registry:** Advanced 4-digit PIN authentication with hidden Telegram bot verification.
-
-### 🔹 The Driver Terminal (`driver-app`)
-- **Immortal Beacon:** High-priority background GPS service that ensures the driver is never lost to the network.
-- **Dual-Vault Ledger:** Real-time bookkeeping tracking credit (digital) and debt (cash) balances automatically.
-- **The Enforcer:** Automated security logic that locks the driver radar if debt exceeds Imperial thresholds.
-- **Smart Dispatch:** Instant notifications for new requests with the ability to Accept or Decline jobs.
+Bayra Prestige is a proprietary, full-stack digital ecosystem designed to modernize transportation logistics across Southern Ethiopia. Built for scale, security, and regional precision, the platform provides a seamless bridge between passengers and a vetted fleet of professional operators.
 
 ---
 
-## 📡 The Imperial Voice (Phase 210)
-We utilize **Firebase Cloud Messaging (FCM)** to maintain a direct line of communication with every citizen and guard in the network.
-- **Instant Alerts:** Real-time push notifications for ride status, driver arrival, and payment confirmation.
-- **Automated Dispatch:** Our backend serves as a 24/7 Watchman, automatically alerting nearby drivers the moment a ride is booked.
+## 🏙️ Platform Overview
+
+The system architecture is divided into three specialized nodes designed to operate in total synchronicity:
+
+### 🔹 Passenger Terminal
+An intuitive interface designed for the modern citizen. 
+- **Regional Optimization:** Specialized mapping services tuned for the unique geography of the Horn of Africa.
+- **Service Tiers:** Dynamic vehicle selection ranging from standard city transport to premium executive services.
+- **Digital Treasury:** Fully integrated secure online payment processing.
+- **Verified Access:** Multi-stage proprietary authentication to ensure network integrity.
+
+### 🔹 Driver Command
+A high-performance utility designed for the professional operator.
+- **Enterprise Reliability:** Advanced background architecture ensuring constant connectivity to the dispatch network.
+- **Financial Intelligence:** Automated settlement logic tracking earnings and platform standing in real-time.
+- **Smart Dispatch:** Intelligent request management allowing for high-efficiency route planning.
+
+### 🔹 Cloud Infrastructure
+The "Imperial Voice" of the network—a 24/7 automated backend managing the state of every journey, payment, and notification across the Empire.
 
 ---
 
-## 🛠️ Technical Fortress
-The Empire is built on a modern, military-grade stack:
-
-| Component | Technology |
-| :--- | :--- |
-| **Frontend** | Kotlin + Jetpack Compose |
-| **Mapping** | OSMDroid + Google Tile Source Fix |
-| **Database** | Firebase Realtime Database |
-| **Backend** | Node.js + Express (Hosted on Render) |
-| **Payments** | Chapa API Integration |
-| **Messaging** | Firebase Admin SDK (Imperial Voice) |
+## 🛠️ Technology Stack
+The platform utilizes a modern, military-grade mobile stack:
+- **Native Android Engine:** High-performance Kotlin & Modern Declarative UI.
+- **Secure Data Core:** Real-time synchronized cloud database.
+- **Proprietary Backend:** Scalable Node.js environment managing logic and security.
+- **Unified Communications:** Encrypted push-notification architecture for instant network response.
 
 ---
 
-## 🚀 Strategic Deployment
+## 🕊️ Vision & Governance
+Bayra Travel is a local leader in the national mission to transform Ethiopia into a digital powerhouse. We are committed to absolute safety, prestige, and the future of green mobility in Arba Minch.
 
-### Prerequisites
-- Android SDK 34
-- Firebase Service Account Key
-- Chapa Secret Key
+[View the Official Privacy Policy](https://bayralive.github.io/Gamo/)
 
-### Installation
-1. **Clone the Core:**
-   ```bash
-   git clone https://github.com/bayralive/Gamo.git
+---
+
+**Director:** [Bayra Live]  
+**HQ:** Arba Minch, Ethiopia  
+**Contact:** bayratravel@gmail.com | [@bayratravel](https://t.me/bayratravel)
