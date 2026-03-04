@@ -117,7 +117,7 @@ fun DriverAppRoot() {
     LaunchedEffect(isAuth) {
         if (isAuth) {
             val serviceIntent = Intent(ctx, ImmortalBeaconService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
         }
     }
 
@@ -166,16 +166,24 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
     val ctx = LocalContext.current
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("rides")
     val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(driverName)
-    var jobs by remember { mutableStateOf(listOf<DataSnapshot>()) }
+    
+    var rawJobs by remember { mutableStateOf(listOf<DataSnapshot>()) }
     var activeSnap by remember { mutableStateOf<DataSnapshot?>(null) }
     var isRadarOn by remember { mutableStateOf(false) }
     var distanceKm by remember { mutableStateOf(0.0) }
     var lastLoc by remember { mutableStateOf<Location?>(null) }
     val isEnforcerLocked = (debt - credit) >= 500
     
+    // 🔥 Declined list for instant UI removal
     var declinedJobs by remember { mutableStateOf(setOf<String>()) }
 
+    // 🔥 Derived State: This filters jobs instantly whenever rawJobs or declinedJobs changes
+    val jobs by remember {
+        derivedStateOf { rawJobs.filter { !declinedJobs.contains(it.key) } }
+    }
+
     LaunchedEffect(jobs.size) { if(isRadarOn && jobs.isNotEmpty() && activeSnap == null) activity?.playAlarm() }
+    
     LaunchedEffect(Unit) {
         ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
@@ -185,9 +193,8 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                 s.children.forEach { snap -> 
                     val status = snap.child("status").value?.toString() ?: ""
                     if (status == "REQUESTED") { 
-                        if (!declinedJobs.contains(snap.key)) list.add(snap) 
-                    } 
-                    else if (snap.child("driverName").value?.toString() == driverName) {
+                        list.add(snap) 
+                    } else if (snap.child("driverName").value?.toString() == driverName) {
                         if (status == "CANCELLED") { passengerCancelled = true } 
                         else if (status != "COMPLETED") { current = snap }
                     }
@@ -196,7 +203,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                     Toast.makeText(ctx, "Passenger Cancelled", Toast.LENGTH_LONG).show()
                     distanceKm = 0.0
                 }
-                jobs = list; activeSnap = current
+                rawJobs = list; activeSnap = current
             }
             override fun onCancelled(e: DatabaseError) {}
         })
@@ -272,7 +279,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                         val isOverLimit = distanceKm > 12.0
                         val surcharge = if (isOverLimit) ((distanceKm - 12.0) * 30).toInt() else 0
                         val finalPrice = basePrice + surcharge
-                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status == "PAID_CHAPA" || status == "PAID_CASH") EmeraldGreen else ImperialWhite)) {
+                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if(status.startsWith("PAID_")) EmeraldGreen else ImperialWhite)) {
                             Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(text = "${job.child("pName").value} - $finalPrice ETB", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if(status.startsWith("PAID_")) ImperialWhite else Color.Black)
                                 if (status == "ON_TRIP") Text(text = "Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if(isOverLimit) ImperialRed else ImperialBlue)
@@ -328,7 +335,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                     if (status == "ACCEPTED" || status == "ARRIVED") {
                                         TextButton(
                                             onClick = { 
-                                                // 🔥 RE-DISPATCH LOGIC: Reset to Requested, Remove Driver Info
                                                 val rideId = job.key!!
                                                 val updates = mapOf(
                                                     "status" to "REQUESTED",
@@ -336,7 +342,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                                     "dPhone" to null
                                                 )
                                                 ref.child(rideId).updateChildren(updates)
-                                                declinedJobs = declinedJobs + rideId // Hide it from this specific driver
+                                                declinedJobs = declinedJobs + rideId
                                                 distanceKm = 0.0
                                             },
                                             modifier = Modifier.padding(top = 8.dp)
@@ -356,6 +362,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
                                     Row {
+                                        // 🔥 THE DECLINE BUTTON: Working Logic
                                         IconButton(
                                             onClick = { declinedJobs = declinedJobs + snap.key!! },
                                             modifier = Modifier.background(Color.LightGray.copy(alpha=0.4f), CircleShape).size(40.dp)
@@ -515,7 +522,7 @@ class ImmortalBeaconService : Service() {
         val n = NotificationCompat.Builder(this, id).setContentTitle("Bayra Elite Active").setSmallIcon(android.R.drawable.ic_menu_mylocation).build()
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) startForeground(1, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(1, n) 
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = Service.START_STICKY 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY 
 }
 
 // 🔥 THE IMPERIAL LISTENER
