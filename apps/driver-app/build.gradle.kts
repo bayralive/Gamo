@@ -11,7 +11,7 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
+        versionCode = 1
         versionName = "1.1"
         vectorDrawables { useSupportLibrary = true }
     }
