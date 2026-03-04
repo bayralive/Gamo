@@ -54,7 +54,7 @@ db.ref('rides').on('child_changed', (snapshot) => {
     }
 });
 
-// 🔥 THE CLEANER: Patrolls every 60 seconds to delete old requests (5-min timeout)
+// 🔥 THE CLEANER: Patrols every 60 seconds to delete old requests (5-min timeout)
 setInterval(async () => {
     const now = Date.now();
     const timeoutLimit = 5 * 60 * 1000; // 5 Minutes
@@ -80,7 +80,7 @@ setInterval(async () => {
 }, 60000); 
 
 // Helper: Send push notification to a specific passenger
-async fun sendToUser(userName, title, body) {
+async function sendToUser(userName, title, body) {
     try {
         const userSnap = await db.ref(`users/${userName}`).once('value');
         const token = userSnap.val()?.fcmToken;
@@ -97,7 +97,7 @@ async fun sendToUser(userName, title, body) {
 }
 
 // Helper: Broadcast push notification to all online drivers
-async fun broadcastToDrivers(title, body) {
+async function broadcastToDrivers(title, body) {
     try {
         const driversSnap = await db.ref('drivers').once('value');
         driversSnap.forEach((child) => {
@@ -167,8 +167,8 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
             console.error(`🛑 [TREASURY] FRAUD DETECTED: Transaction ${txRef} failed verification.`);
             res.send("<h1 style='text-align:center; margin-top:20%; color:red; font-family:sans-serif;'>🛑 Payment Not Verified. Please try again or pay cash.</h1>");
         }
-    } catch (e) {
-        console.error("❌ [TREASURY] Verification Error:", e.message);
+    } catch (error) {
+        console.error("❌ [TREASURY] Verification Error:", error.message);
         res.status(500).send("<h1>Verification error.</h1>");
     }
 });
