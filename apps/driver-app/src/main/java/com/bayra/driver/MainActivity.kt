@@ -117,7 +117,7 @@ fun DriverAppRoot() {
     LaunchedEffect(isAuth) {
         if (isAuth) {
             val serviceIntent = Intent(ctx, ImmortalBeaconService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(serviceIntent) else ctx.startService(serviceIntent)
         }
     }
 
@@ -173,7 +173,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
     var lastLoc by remember { mutableStateOf<Location?>(null) }
     val isEnforcerLocked = (debt - credit) >= 500
     
-    // 🔥 Track jobs the driver has manually declined
     var declinedJobs by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(jobs.size) { if(isRadarOn && jobs.isNotEmpty() && activeSnap == null) activity?.playAlarm() }
@@ -186,7 +185,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                 s.children.forEach { snap -> 
                     val status = snap.child("status").value?.toString() ?: ""
                     if (status == "REQUESTED") { 
-                        // Only show if not declined
                         if (!declinedJobs.contains(snap.key)) list.add(snap) 
                     } 
                     else if (snap.child("driverName").value?.toString() == driverName) {
@@ -281,7 +279,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                 
                                 if (status.startsWith("PAID_")) {
                                     Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = ImperialWhite)
-                                    // 🔥 GUIDANCE: Dynamic Button Text
                                     val finishBtnText = if(status == "PAID_CASH") "COLLECT CASH & FINISH" else "FINISH & CLOSE"
                                     
                                     Button(
@@ -328,11 +325,18 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         colors = ButtonDefaults.buttonColors(containerColor = if(next == "ARRIVED_DEST") EmeraldGreen else ImperialRed)
                                     ) { Text(text = next, fontWeight = FontWeight.Bold) }
                                     
-                                    // 🔥 STRATEGIC CANCELLATION: Only visible before Trip Starts
                                     if (status == "ACCEPTED" || status == "ARRIVED") {
                                         TextButton(
                                             onClick = { 
-                                                ref.child(job.key!!).child("status").setValue("CANCELLED")
+                                                // 🔥 RE-DISPATCH LOGIC: Reset to Requested, Remove Driver Info
+                                                val rideId = job.key!!
+                                                val updates = mapOf(
+                                                    "status" to "REQUESTED",
+                                                    "driverName" to null,
+                                                    "dPhone" to null
+                                                )
+                                                ref.child(rideId).updateChildren(updates)
+                                                declinedJobs = declinedJobs + rideId // Hide it from this specific driver
                                                 distanceKm = 0.0
                                             },
                                             modifier = Modifier.padding(top = 8.dp)
@@ -352,7 +356,6 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
                                     Row {
-                                        // 🔥 DECLINE BUTTON
                                         IconButton(
                                             onClick = { declinedJobs = declinedJobs + snap.key!! },
                                             modifier = Modifier.background(Color.LightGray.copy(alpha=0.4f), CircleShape).size(40.dp)
