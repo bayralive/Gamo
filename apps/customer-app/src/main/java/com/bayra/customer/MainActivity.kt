@@ -181,7 +181,7 @@ fun PassengerSuperApp() {
             } else {
                 ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = false, drawerContent = {
                         ModalDrawerSheet {
-                            Column(Modifier.padding(20.dp), Arrangement.Top, Alignment.Start) {
+                            Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.Start) {
                                 Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), IMPERIAL_BLUE)
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                 Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
@@ -198,7 +198,7 @@ fun PassengerSuperApp() {
                     }
                 ) {
                     Scaffold(topBar = { 
-                            Row(Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), Arrangement.Start, Alignment.CenterVertically) {
+                            Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
                                 Spacer(Modifier.width(16.dp)); 
                                 Text("Bayra Travel", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
@@ -371,23 +371,28 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     Button(onClick = { onPointChange(pickupPt, mapRef?.mapCenter as GeoPoint, "CONFIRM", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
+                    // 🔥 IMPERIAL PRICING ENGINE
                     val distKm = try {
+                        val p = pickupPt!!
+                        val d = destPt!!
                         val results = FloatArray(1)
-                        android.location.Location.distanceBetween(pickupPt!!.latitude, pickupPt!!.longitude, destPt!!.latitude, destPt!!.longitude, results)
+                        android.location.Location.distanceBetween(p.latitude, p.longitude, d.latitude, d.longitude, results)
                         results[0] / 1000.0
-                    } catch (e: Exception) { 1.5 }
+                    } catch (e: Exception) { 2.0 } 
 
+                    val baseFare = 50.0
                     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
                     val nightSurcharge = if (hour >= 20 || hour < 6) 200.0 else 0.0
+                    val kmRate = if (selectedTier.isCar) 45.0 else 18.0
                     
                     var fare = if (selectedTier.isHr) {
                         selectedTier.base * hrCount
                     } else {
-                        val kmRate = if (selectedTier.isCar) 45.0 else 18.0
-                        50.0 + (distKm * kmRate) + nightSurcharge
+                        baseFare + (distKm * kmRate) + nightSurcharge
                     }
                     
-                    if (selectedTier == Tier.POOL) fare *= 0.8
+                    // 🔥 UPDATED: 30% POOL DISCOUNT
+                    if (selectedTier == Tier.POOL) fare *= 0.7
                     if (selectedTier == Tier.CODE_3) fare += 50.0
                     
                     val totalWithComm = fare * 1.15
