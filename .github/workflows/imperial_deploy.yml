@@ -7,10 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -28,13 +28,13 @@ jobs:
             -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
 
       - name: Upload Passenger App
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Bayra-Travel-Passenger
           path: apps/customer-app/build/outputs/bundle/release/*.aab
 
       - name: Upload Driver App
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Bayra-Travel-Guard
           path: apps/driver-app/build/outputs/bundle/release/*.aab
