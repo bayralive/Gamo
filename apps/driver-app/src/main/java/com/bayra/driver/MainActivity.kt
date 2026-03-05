@@ -174,8 +174,8 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
     var lastLoc by remember { mutableStateOf<Location?>(null) }
     val isEnforcerLocked = (debt - credit) >= 500
     
+    // 🔥 LOCAL FILTERING
     var declinedJobs by remember { mutableStateOf(setOf<String>()) }
-
     val jobs by remember {
         derivedStateOf { rawJobs.filter { !declinedJobs.contains(it.key) } }
     }
@@ -190,21 +190,10 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                 var passengerCancelled = false
                 s.children.forEach { snap -> 
                     val status = snap.child("status").value?.toString() ?: ""
-                    
-                    // 🔥 SMART DISPATCH FILTERING
-                    val reservedFor = snap.child("reservedFor").value?.toString()
-                    val reservedUntil = snap.child("reservedUntil").value?.toString()?.toLongOrNull() ?: 0L
-
                     if (status == "REQUESTED") { 
-                        val isForMe = reservedFor == null || reservedFor == driverName
-                        val isExpired = reservedUntil < System.currentTimeMillis()
-                        
-                        if (isForMe || isExpired) {
-                            list.add(snap) 
-                        }
-                    } 
-                    else if (snap.child("driverName").value?.toString() == driverName) {
-                        if (status == "CANCELLED" || status == "CANCELLED_BY_PASSENGER") { passengerCancelled = true } 
+                        list.add(snap) 
+                    } else if (snap.child("driverName").value?.toString() == driverName) {
+                        if (status.startsWith("CANCELLED")) { passengerCancelled = true } 
                         else if (status != "COMPLETED") { current = snap }
                     }
                 }
@@ -269,20 +258,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 if(!isRadarOn) {
                     Button(
-                        onClick = { 
-                            // 🔥 SECURITY: BAN CHECK
-                            FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").get().addOnSuccessListener { s ->
-                                val isBanned = s.child("isBanned").value as? Boolean ?: false
-                                val banUntil = s.child("banUntil").value as? Long ?: 0L
-                                
-                                if (isBanned && System.currentTimeMillis() < banUntil) {
-                                    val hoursLeft = (banUntil - System.currentTimeMillis()) / (1000 * 60 * 60)
-                                    Toast.makeText(ctx, "SUSPENDED: $hoursLeft hours remaining.", Toast.LENGTH_LONG).show()
-                                } else {
-                                    isRadarOn = true 
-                                }
-                            }
-                        }, 
+                        onClick = { isRadarOn = true }, 
                         modifier = Modifier.fillMaxWidth().height(60.dp), 
                         colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                     ) { 
@@ -308,6 +284,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                 
                                 if (status.startsWith("PAID_")) {
                                     Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = ImperialWhite)
+                                    // 🔥 GUIDANCE: Dynamic Text for Cash collection
                                     val finishBtnText = if(status == "PAID_CASH") "COLLECT CASH & FINISH" else "FINISH & CLOSE"
                                     
                                     Button(
@@ -351,26 +328,20 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                     Button(
                                         onClick = { ref.child(job.key!!).child("status").setValue(next) }, 
                                         modifier = Modifier.fillMaxWidth().padding(top=10.dp), 
-                                        colors = ButtonDefaults.buttonColors(containerColor = if(next == "ARRIVED_DEST") EmeraldGreen else ImperialRed)
+                                        colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
                                     ) { Text(text = next, fontWeight = FontWeight.Bold) }
                                     
+                                    // 🔥 STRATEGIC RE-DISPATCH: Only allowed before the trip starts
                                     if (status == "ACCEPTED" || status == "ARRIVED") {
                                         TextButton(
                                             onClick = { 
                                                 val rideId = job.key!!
-                                                val updates = mapOf(
-                                                    "status" to "REQUESTED",
-                                                    "driverName" to null,
-                                                    "dPhone" to null
-                                                )
+                                                val updates = mapOf("status" to "REQUESTED", "driverName" to null, "dPhone" to null)
                                                 ref.child(rideId).updateChildren(updates)
                                                 declinedJobs = declinedJobs + rideId
                                                 distanceKm = 0.0
-                                            },
-                                            modifier = Modifier.padding(top = 8.dp)
-                                        ) {
-                                            Text(text = "CANCEL RIDE", color = ImperialRed, fontWeight = FontWeight.Bold)
-                                        }
+                                            }
+                                        ) { Text(text = "CANCEL RIDE", color = ImperialRed, fontWeight = FontWeight.Bold) }
                                     }
                                 }
                             }
@@ -384,6 +355,7 @@ fun RadarHub(driverName: String, driverPhone: String, debt: Int, credit: Int, ac
                                         Text(text = "${snap.child("price").value} ETB", color = Color.DarkGray) 
                                     }
                                     Row {
+                                        // 🔥 THE DECLINE BUTTON
                                         IconButton(
                                             onClick = { declinedJobs = declinedJobs + snap.key!! },
                                             modifier = Modifier.background(Color.LightGray.copy(alpha=0.4f), CircleShape).size(40.dp)
@@ -485,12 +457,12 @@ fun DriverAccountView(n: String, d: Int, c: Int, onH: () -> Unit, onL: () -> Uni
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialWhite)) { 
                 Column(modifier = Modifier.padding(16.dp)) { 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { 
-                        Text(text = "Credit Vault (Chapa 85%)", color = EmeraldGreen, fontWeight = FontWeight.Bold)
+                        Text(text = "Credit: +$c ETB", color = EmeraldGreen, fontWeight = FontWeight.Bold)
                         Text(text = "+$c ETB", color = EmeraldGreen, fontWeight = FontWeight.Bold) 
                     }
                     Divider(modifier = Modifier.padding(vertical = 12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { 
-                        Text(text = "Debt Vault (Cash 15%)", color = ImperialRed, fontWeight = FontWeight.Bold)
+                        Text(text = "Debt: -$d ETB", color = ImperialRed, fontWeight = FontWeight.Bold)
                         Text(text = "-$d ETB", color = ImperialRed, fontWeight = FontWeight.Bold) 
                     }
                     Divider(modifier = Modifier.padding(vertical = 12.dp))
