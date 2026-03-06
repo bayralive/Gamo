@@ -3,7 +3,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
 }
-
 android {
     namespace = "com.bayra.customer"
     compileSdk = 34
@@ -11,30 +10,25 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
-
     buildTypes {
-        getByName("debug") {
-            isCrunchPngs = false
-        }
+        getByName("debug") { isCrunchPngs = false }
         getByName("release") {
             isMinifyEnabled = false
             isCrunchPngs = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.4.0" }
+    composeOptions { kotlinCompilerExtensionVersion = "1.4.2" } // 🔥 FIXED: Match for Kotlin 1.8.10
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions { jvmTarget = "11" }
 }
-
 dependencies {
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.7.0")
