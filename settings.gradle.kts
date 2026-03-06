@@ -1,16 +1,3 @@
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
 rootProject.name = "Bayra"
-include(":apps:customer-app", ":apps:driver-app")
+include(":apps:customer-app")
+include(":apps:driver-app")
