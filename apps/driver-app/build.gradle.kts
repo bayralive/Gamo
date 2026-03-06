@@ -15,6 +15,13 @@ android {
         versionName = "1.1"
         vectorDrawables { useSupportLibrary = true }
     }
+    
+    // 🔥 Imperial Resource Bypass (Added to prevent PNG crashes)
+    aaptOptions {
+        cruncherEnabled = false
+        useNewCruncher = false
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -33,12 +40,13 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.7.0")
+    // 🔥 Fixed syntax (Added missing ")
     implementation(platform("androidx.compose:compose-bom:2023.01.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     // 🔥 REMOVED EXTENDED ICONS TO PREVENT BUILD FAILURES
     implementation("com.google.firebase:firebase-database-ktx:20.2.2")
-    // Imperial Voice dependency injected below
+    // 🔥 Fixed syntax (Added missing ")
     implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
