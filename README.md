@@ -46,4 +46,4 @@ Bayra Travel is a local leader in the national mission to transform Ethiopia int
 
 **Director:** [Bayra Live]  
 **HQ:** Arba Minch, Ethiopia  
-**Contact:** bayratravel@gmail.com | [@bayratravel](https://t.me/bayratravel)
+**Contact:** bayratravel@gmail.com | [@bayratravel](https://t.me/bayratravel) 
