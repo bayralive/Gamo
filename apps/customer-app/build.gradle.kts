@@ -5,13 +5,13 @@ plugins {
 }
 android {
     namespace = "com.bayra.customer"
-    compileSdk = 34
+    compileSdk = 35
     defaultConfig {
         applicationId = "com.bayra.customer"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        targetSdk = 35
+        versionCode = 4
+        versionName = "1.3"
     }
     buildTypes {
         getByName("debug") { isCrunchPngs = false }
