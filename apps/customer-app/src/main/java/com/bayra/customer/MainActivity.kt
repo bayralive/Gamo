@@ -150,22 +150,35 @@ fun PassengerSuperApp() {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             if (!isAuth) {
                 if (!isVerifying) {
-                    LoginView(name = pName, phone = pPhone, email = pEmail) { n, p, e -> 
-                        val vStart = System.currentTimeMillis()
-                        prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
-                        pName = n; pPhone = p; pEmail = e; isVerifying = true 
-                        val pin = (100000..999999).random().toString()
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
-                        scope.launch(Dispatchers.IO) { 
-                            try { 
-                                val msg = "🚨 SILENT REGISTRY ACCESS\nName: $n\nPhone: $p\n🗝️ PIN: $pin"
-                                val encodedMsg = URLEncoder.encode(msg, "UTF-8")
-                                val url = URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg")
-                                (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET" }.inputStream.bufferedReader().readText()
-                            } catch (ex: Exception) {} 
-                        }
-                    }
-                } else {
+                LoginView(name = pName, phone = pPhone, email = pEmail) { n, p, e -> 
+    val vStart = System.currentTimeMillis()
+    val safeId = if (p.isNotEmpty()) p else e.replace(".", "_")
+    prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
+    pName = n; pPhone = p; pEmail = e; isVerifying = true 
+    val pin = (100000..999999).random().toString()
+    
+    FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(safeId).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
+    
+    scope.launch(Dispatchers.IO) { 
+        try { 
+            // 1. Telegram Alert (Your eyes only)
+            val msg = "🚨 NEW REGISTRY\nName: $n\nPhone: ${p.ifEmpty{"N/A"}}\nEmail: ${e.ifEmpty{"N/A"}}\n🗝️ PIN: $pin"
+            val encodedMsg = URLEncoder.encode(msg, "UTF-8")
+            URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg").openStream()
+            
+            // 2. Email Verification via your Render Backend
+            if (e.contains("@")) {
+                val conn = URL("https://bayra-backend-eu.onrender.com/verify").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val json = JSONObject().put("name", n).put("phone", p).put("email", e).put("pin", pin)
+                conn.outputStream.write(json.toString().toByteArray())
+                conn.responseCode // Triggers the backend email sending logic
+            }
+        } catch (ex: Exception) { ex.printStackTrace() } 
+    }
+} else {
                     VerificationView(phone = pPhone, prefs = prefs, onVerify = { code ->
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
@@ -197,13 +210,12 @@ fun PassengerSuperApp() {
                         }
                     }
                 ) {
-                    // 🔥 Fixed TopAppBar crash issue
                     Scaffold(topBar = { 
-                            SmallTopAppBar(
-                                title = { Text("Bayra Travel", color = Color.White, fontWeight = FontWeight.Black) },
-                                navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) } },
-                                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = IMPERIAL_BLUE)
-                            )
+                            Row(modifier = Modifier.fillMaxWidth().height(60.dp).background(IMPERIAL_BLUE).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) }
+                                Spacer(Modifier.width(16.dp)); 
+                                Text("Bayra Travel", fontWeight = FontWeight.Black, color = Color.White, fontSize = 20.sp)
+                            }
                         }
                     ) { padding ->
                         Box(Modifier.padding(padding)) {
@@ -233,15 +245,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     
     var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
-    // 🔥 "Self-Healing" GPS refresh logic
-    LaunchedEffect(Unit) {
-        while(true) {
-            locationOverlay?.enableMyLocation()
-            mapRef?.invalidate()
-            delay(5000L)
-        }
-    }
-
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").addValueEventListener(object : ValueEventListener {
@@ -269,12 +272,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                 val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0)
                 setScrollableAreaLimitDouble(hornOfAfrica)
                 minZoomLevel = 5.0
-                
-                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this)
-                loc.enableMyLocation()
-                loc.enableFollowLocation() // Keeps blue dot centered
-                loc.isDrawAccuracyEnabled = true
-                overlays.add(loc)
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); overlays.add(loc)
                 locationOverlay = loc
                 mapRef = this 
             } 
@@ -290,13 +288,8 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                 FloatingActionButton(
                     onClick = {
                         val myLoc = locationOverlay?.myLocation
-                        if (myLoc != null) { 
-                            mapRef?.controller?.animateTo(myLoc) 
-                            mapRef?.controller?.setZoom(18.0)
-                        } else { 
-                            locationOverlay?.enableMyLocation()
-                            Toast.makeText(ctx, "Refreshing GPS...", Toast.LENGTH_SHORT).show() 
-                        }
+                        if (myLoc != null) { mapRef?.controller?.animateTo(myLoc) } 
+                        else { Toast.makeText(ctx, "Locating...", Toast.LENGTH_SHORT).show() }
                     },
                     containerColor = Color.White,
                     contentColor = IMPERIAL_BLUE,
@@ -391,28 +384,24 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     Button(onClick = { onPointChange(pickupPt, mapRef?.mapCenter as GeoPoint, "CONFIRM", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
-                    
-                    // 🔥 IMPERIAL PRICING ENGINE (Updated for 380 ETB Fuel)
                     val distKm = try {
-                        val p = pickupPt!!
-                        val d = destPt!!
+                        val p = pickupPt!!; val d = destPt!!
                         val results = FloatArray(1)
                         android.location.Location.distanceBetween(p.latitude, p.longitude, d.latitude, d.longitude, results)
                         results[0] / 1000.0
                     } catch (e: Exception) { 2.0 } 
 
-                    val baseFare = 100.0 // Adjusted Base Fare
                     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                    val nightSurcharge = if (hour >= 20 || hour < 6) 300.0 else 0.0
-                    val kmRate = if (selectedTier.isCar) 65.0 else 25.0 // Adjusted for 380 ETB Fuel
+                    // 🔥 NEW IMPERIAL ECONOMY
+                    val nightSurcharge = if (hour >= 20 || hour < 6) 400.0 else 0.0
+                    val kmRate = if (selectedTier.isCar) 90.0 else 35.0
                     
                     var fare = if (selectedTier.isHr) {
                         selectedTier.base * hrCount
                     } else {
-                        baseFare + (distKm * kmRate) + nightSurcharge
+                        150.0 + (distKm * kmRate) + nightSurcharge
                     }
                     
-                    // Discounts & Add-ons
                     if (selectedTier == Tier.POOL) fare *= 0.7
                     if (selectedTier == Tier.CODE_3) fare += 50.0
                     
@@ -487,7 +476,7 @@ fun HistoryPage(name: String) {
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pName").equalTo(name).addListenerForSingleValueEvent(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { trips.clear(); trips.addAll(s.children.filter { it.child("status").value == "COMPLETED" }.reversed()) }; override fun onCancelled(e: DatabaseError) {} }) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) { 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Booking History", fontSize = 24.sp, fontWeight = FontWeight.Bold); IconButton(onClick = { trips.forEach { it.ref.removeValue() } }) { Icon(Icons.Filled.Delete, null, tint = IMPERIAL_RED) } }
-        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier, horizontalAlignment = Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
+        LazyColumn { items(items = trips.toList()) { t -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Column(horizontalAlignment = Alignment.Start) { Text(t.child("tier").value.toString(), fontWeight = FontWeight.Bold); Text(t.child("driverName").value?.toString() ?: "Unknown Driver", fontSize = 12.sp, color = Color.Gray) }; Text("${t.child("price").value} ETB", fontWeight = FontWeight.Bold) } } } }
     }
 }
 
@@ -517,16 +506,17 @@ fun VerificationView(phone: String, prefs: SharedPreferences, onVerify: (String)
     }
 }
 
-class BayraMessagingService : FirebaseMessagingService() {
-    override fun onMessageReceived(message: RemoteMessage) {
+// 🔥 THE IMPERIAL LISTENER - FULLY QUALIFIED FOR GITHUB COMPILER
+class BayraMessagingService : com.google.firebase.messaging.FirebaseMessagingService() {
+    override fun onMessageReceived(message: com.google.firebase.messaging.RemoteMessage) {
         super.onMessageReceived(message)
         val channelId = "bayra_alerts"
-        val notificationManager = this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Empire Alerts", NotificationManager.IMPORTANCE_HIGH)
+        val notificationManager = this.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(channelId, "Empire Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
             notificationManager.createNotificationChannel(channel)
         }
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle(message.notification?.title ?: "Bayra Travel")
             .setContentText(message.notification?.body ?: "New Dispatch Update")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
