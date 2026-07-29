@@ -5,10 +5,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Build with Gradle
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Build with Gradle (Generates APKs)
         run: ./gradlew assembleDebug
+        
+      - name: Extract Customer APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bayra-Customer-App
+          path: apps/customer-app/build/outputs/apk/debug/*.apk
+          
+      - name: Extract Driver APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bayra-Driver-App
+          path: apps/driver-app/build/outputs/apk/debug/*.apk
