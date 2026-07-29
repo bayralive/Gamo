@@ -22,16 +22,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -40,55 +31,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -120,6 +77,7 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(color = 0xFF1A237E)
@@ -141,7 +99,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraPrestige_v230"
+        Configuration.getInstance().userAgentValue = "BayraPrestige_v232"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
         setContent { PassengerSuperApp() }
     }
@@ -167,7 +125,7 @@ class BayraMessagingService : FirebaseMessagingService() {
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
     val activity = ctx as? ComponentActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v230", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v232", Context.MODE_PRIVATE) }
     
     var isDarkMode by rememberSaveable { mutableStateOf(value = prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(value = prefs.getString("n", "") ?: "") }
@@ -176,7 +134,6 @@ fun PassengerSuperApp() {
     var isAuth by remember { mutableStateOf(value = prefs.getBoolean("auth", false)) }
     var isVerifying by rememberSaveable { mutableStateOf(value = prefs.getBoolean("is_v", false)) }
     
-    // THE STATE HOISTING MATRIX
     var pickupPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var selectedTier by remember { mutableStateOf(value = Tier.COMFORT) }
@@ -186,6 +143,7 @@ fun PassengerSuperApp() {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf(value = "MAP") }
+
     var lastBackPressTime by remember { mutableStateOf(value = 0L) }
     
     BackHandler {
@@ -290,19 +248,24 @@ fun PassengerSuperApp() {
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                 Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
                             }
-                            Divider()
+                            HorizontalDivider()
                             NavigationDrawerItem(label = { Text(text = "Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Home, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "History") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.List, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "Notifications") }, selected = currentView == "NOTIFICATIONS", onClick = { currentView = "NOTIFICATIONS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Info, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Settings, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "About Us") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Info, contentDescription = null) })
-                            Divider()
+                            HorizontalDivider()
                             NavigationDrawerItem(label = { Text(text = "Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = null) })
                         }
                     }
                 ) {
                     Scaffold(
-                        topBar = { TopAppBar(title = { Text(text = "BAYRA PRESTIGE", fontWeight = FontWeight.Black) }, navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(imageVector = Icons.Filled.Menu, contentDescription = null) } }) }
+                        topBar = { 
+                            TopAppBar(
+                                title = { Text("BAYRA PRESTIGE", fontWeight = FontWeight.Black) }, 
+                                navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(imageVector = Icons.Filled.Menu, contentDescription = null) } }
+                            ) 
+                        }
                     ) { padding ->
                         Box(modifier = Modifier.padding(paddingValues = padding)) {
                             when(currentView) {
@@ -342,7 +305,7 @@ fun BookingHub(
         val size = 100
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }
         canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
         canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
         paint.color = android.graphics.Color.WHITE
@@ -353,7 +316,7 @@ fun BookingHub(
         val size = 100
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }
         canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
         canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
         paint.color = android.graphics.Color.WHITE
@@ -446,13 +409,13 @@ fun BookingHub(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(size = 4.dp)).padding(all = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(size = 50.dp)) {
-                        val dropPath = androidx.compose.ui.graphics.Path().apply { 
+                        val dropPath = Path().apply { 
                             moveTo(size.width / 2f, size.height)
                             cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f)
                             cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) 
                         }
                         drawPath(path = dropPath, color = IMPERIAL_RED)
-                        drawCircle(color = Color.White, radius = size.width / 6f, center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 3f))
+                        drawCircle(color = Color.White, radius = size.width / 6f, center = Offset(size.width / 2f, size.height / 3f))
                     }
                     Spacer(modifier = Modifier.height(height = 50.dp))
                 }
@@ -510,7 +473,6 @@ fun BookingHub(
             }
         } else {
             Column(modifier = Modifier.align(alignment = Alignment.BottomCenter).fillMaxWidth().background(color = Color.White, shape = RoundedCornerShape(topStart = 24.dp)).padding(all = 24.dp)) {
-                // 🔥 FIXED THE ENUM COMPARISON ERROR
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(space = 8.dp)) { 
                     items(items = Tier.values().toList()) { t -> 
                         Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(color = 0xFFEEEEEE), shape = RoundedCornerShape(size = 8.dp)) { 
@@ -576,18 +538,6 @@ fun BookingHub(
     }
 }
 
-fun createLollipopIcon(ctx: Context, color: Int): BitmapDrawable {
-    val size = 100
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = android.graphics.Paint().apply { this.color = color; isAntiAlias = true }
-    canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
-    canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
-    paint.color = android.graphics.Color.WHITE
-    canvas.drawCircle(size/2f, size/4f + 10, 8f, paint)
-    return BitmapDrawable(ctx.resources, bitmap)
-}
-
 @Composable
 fun NotificationPage() {
     val bulletins = remember { mutableStateListOf<DataSnapshot>() }
@@ -627,7 +577,7 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
             Text(text = "Dark Mode Appearance")
             Switch(checked = isDarkMode, onCheckedChange = onToggle) 
         }
-        Divider(modifier = Modifier.padding(vertical = 16.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(color = 0xFF229ED9))) { Text(text = "Contact Telegram Scout") }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text(text = "Email Empire Support") }
     }
