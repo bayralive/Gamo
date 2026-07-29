@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
@@ -99,7 +100,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraPrestige_v232"
+        Configuration.getInstance().userAgentValue = "BayraPrestige_v230"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
         setContent { PassengerSuperApp() }
     }
@@ -125,7 +126,7 @@ class BayraMessagingService : FirebaseMessagingService() {
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
     val activity = ctx as? ComponentActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v232", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v230", Context.MODE_PRIVATE) }
     
     var isDarkMode by rememberSaveable { mutableStateOf(value = prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(value = prefs.getString("n", "") ?: "") }
@@ -134,6 +135,7 @@ fun PassengerSuperApp() {
     var isAuth by remember { mutableStateOf(value = prefs.getBoolean("auth", false)) }
     var isVerifying by rememberSaveable { mutableStateOf(value = prefs.getBoolean("is_v", false)) }
     
+    // THE STATE HOISTING MATRIX
     var pickupPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var selectedTier by remember { mutableStateOf(value = Tier.COMFORT) }
@@ -248,13 +250,13 @@ fun PassengerSuperApp() {
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                                 Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
                             }
-                            HorizontalDivider()
+                            Divider() // 🔥 FIXED
                             NavigationDrawerItem(label = { Text(text = "Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Home, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "History") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.List, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "Notifications") }, selected = currentView == "NOTIFICATIONS", onClick = { currentView = "NOTIFICATIONS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Info, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Settings, contentDescription = null) })
                             NavigationDrawerItem(label = { Text(text = "About Us") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(imageVector = Icons.Filled.Info, contentDescription = null) })
-                            HorizontalDivider()
+                            Divider() // 🔥 FIXED
                             NavigationDrawerItem(label = { Text(text = "Logout") }, selected = false, onClick = { prefs.edit().clear().apply(); isAuth = false }, icon = { Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = null) })
                         }
                     }
@@ -305,7 +307,7 @@ fun BookingHub(
         val size = 100
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }
+        val paint = Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }
         canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
         canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
         paint.color = android.graphics.Color.WHITE
@@ -316,7 +318,7 @@ fun BookingHub(
         val size = 100
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }
+        val paint = Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }
         canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
         canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
         paint.color = android.graphics.Color.WHITE
@@ -409,13 +411,15 @@ fun BookingHub(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(size = 4.dp)).padding(all = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(size = 50.dp)) {
+                        val w = size.width
+                        val h = size.height
                         val dropPath = Path().apply { 
-                            moveTo(size.width / 2f, size.height)
-                            cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f)
-                            cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) 
+                            moveTo(w / 2f, h)
+                            cubicTo(0f, h / 2f, w / 4f, 0f, w / 2f, 0f)
+                            cubicTo(3 * w / 4f, 0f, w, h / 2f, w / 2f, h)
                         }
                         drawPath(path = dropPath, color = IMPERIAL_RED)
-                        drawCircle(color = Color.White, radius = size.width / 6f, center = Offset(size.width / 2f, size.height / 3f))
+                        drawCircle(color = Color.White, radius = w / 6f, center = Offset(w / 2f, h / 3f))
                     }
                     Spacer(modifier = Modifier.height(height = 50.dp))
                 }
@@ -577,7 +581,7 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
             Text(text = "Dark Mode Appearance")
             Switch(checked = isDarkMode, onCheckedChange = onToggle) 
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+        Divider(modifier = Modifier.padding(vertical = 16.dp)) // 🔥 RESTORED TO Divider
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravel"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(color = 0xFF229ED9))) { Text(text = "Contact Telegram Scout") }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text(text = "Email Empire Support") }
     }
