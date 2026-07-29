@@ -1,46 +1,103 @@
 package com.bayra.customer
 
 import android.Manifest
-import android.app.NotificationChannel // 🔥 ADDED
-import android.app.NotificationManager // 🔥 ADDED
-import android.content.*
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
-import android.os.*
+import android.os.Build
+import android.os.Bundle
 import android.preference.PreferenceManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.*
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
-import com.google.firebase.database.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -63,7 +120,6 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(color = 0xFF1A237E)
@@ -85,7 +141,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
-        Configuration.getInstance().userAgentValue = "BayraPrestige_v232"
+        Configuration.getInstance().userAgentValue = "BayraPrestige_v230"
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
         setContent { PassengerSuperApp() }
     }
@@ -111,7 +167,7 @@ class BayraMessagingService : FirebaseMessagingService() {
 fun PassengerSuperApp() {
     val ctx = LocalContext.current
     val activity = ctx as? ComponentActivity
-    val prefs = remember { ctx.getSharedPreferences("bayra_p_v232", Context.MODE_PRIVATE) }
+    val prefs = remember { ctx.getSharedPreferences("bayra_p_v230", Context.MODE_PRIVATE) }
     
     var isDarkMode by rememberSaveable { mutableStateOf(value = prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(value = prefs.getString("n", "") ?: "") }
@@ -120,6 +176,7 @@ fun PassengerSuperApp() {
     var isAuth by remember { mutableStateOf(value = prefs.getBoolean("auth", false)) }
     var isVerifying by rememberSaveable { mutableStateOf(value = prefs.getBoolean("is_v", false)) }
     
+    // THE STATE HOISTING MATRIX
     var pickupPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(value = null) }
     var selectedTier by remember { mutableStateOf(value = Tier.COMFORT) }
@@ -129,7 +186,6 @@ fun PassengerSuperApp() {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf(value = "MAP") }
-
     var lastBackPressTime by remember { mutableStateOf(value = 0L) }
     
     BackHandler {
@@ -246,12 +302,7 @@ fun PassengerSuperApp() {
                     }
                 ) {
                     Scaffold(
-                        topBar = { 
-                            TopAppBar(
-                                title = { Text("BAYRA PRESTIGE", fontWeight = FontWeight.Black) }, 
-                                navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(imageVector = Icons.Filled.Menu, contentDescription = null) } }
-                            ) 
-                        }
+                        topBar = { TopAppBar(title = { Text(text = "BAYRA PRESTIGE", fontWeight = FontWeight.Black) }, navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(imageVector = Icons.Filled.Menu, contentDescription = null) } }) }
                     ) { padding ->
                         Box(modifier = Modifier.padding(paddingValues = padding)) {
                             when(currentView) {
@@ -395,15 +446,13 @@ fun BookingHub(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(color = Color.Black.copy(alpha = 0.7f), shape = RoundedCornerShape(size = 4.dp)).padding(all = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     androidx.compose.foundation.Canvas(modifier = Modifier.size(size = 50.dp)) {
-                        val w = size.width
-                        val h = size.height
-                        val dropPath = Path().apply { 
-                            moveTo(w / 2f, h)
-                            cubicTo(0f, h / 2f, w / 4f, 0f, w / 2f, 0f)
-                            cubicTo(3 * w / 4f, 0f, w, h / 2f, w / 2f, h)
+                        val dropPath = androidx.compose.ui.graphics.Path().apply { 
+                            moveTo(size.width / 2f, size.height)
+                            cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f)
+                            cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) 
                         }
                         drawPath(path = dropPath, color = IMPERIAL_RED)
-                        drawCircle(color = Color.White, radius = w / 6f, center = Offset(w / 2f, h / 3f))
+                        drawCircle(color = Color.White, radius = size.width / 6f, center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 3f))
                     }
                     Spacer(modifier = Modifier.height(height = 50.dp))
                 }
@@ -461,8 +510,9 @@ fun BookingHub(
             }
         } else {
             Column(modifier = Modifier.align(alignment = Alignment.BottomCenter).fillMaxWidth().background(color = Color.White, shape = RoundedCornerShape(topStart = 24.dp)).padding(all = 24.dp)) {
+                // 🔥 FIXED THE ENUM COMPARISON ERROR
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(space = 8.dp)) { 
-                    items(items = Tier.entries.toList()) { t -> 
+                    items(items = Tier.values().toList()) { t -> 
                         Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(color = 0xFFEEEEEE), shape = RoundedCornerShape(size = 8.dp)) { 
                             Text(text = t.label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) 
                         } 
@@ -530,7 +580,7 @@ fun createLollipopIcon(ctx: Context, color: Int): BitmapDrawable {
     val size = 100
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val paint = Paint().apply { this.color = color; isAntiAlias = true }
+    val paint = android.graphics.Paint().apply { this.color = color; isAntiAlias = true }
     canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint)
     canvas.drawCircle(size/2f, size/4f + 10, 25f, paint)
     paint.color = android.graphics.Color.WHITE
