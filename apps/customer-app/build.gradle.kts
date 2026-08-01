@@ -9,9 +9,10 @@ android {
     defaultConfig {
         applicationId = "com.bayra.customer"
         minSdk = 24
+<<<<<<< HEAD
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.8"
+        versionCode = 10
+        versionName = "2.31.10"
     }
     buildTypes {
         getByName("debug") { isCrunchPngs = false }
@@ -20,6 +21,12 @@ android {
             isCrunchPngs = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+=======
+        targetSdk = 34
+        versionCode = 10
+        versionName = "2.31.10"
+        multiDexEnabled = true
+>>>>>>> 0ac9e86 (Bump customer-app versionCode to 10 for Build #231)
     }
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.2" } // 🔥 FIXED: Match for Kotlin 1.8.10
