@@ -12,6 +12,7 @@ android {
         targetSdk = 35
         versionCode = 10
         versionName = "2.31.10"
+        multiDexEnabled = true
     }
     buildTypes {
         getByName("debug") { isCrunchPngs = false }
@@ -20,13 +21,9 @@ android {
             isCrunchPngs = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
-        targetSdk = 34
-        versionCode = 10
-        versionName = "2.31.10"
-        multiDexEnabled = true
     }
     buildFeatures { compose = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.4.2" } // 🔥 FIXED: Match for Kotlin 1.8.10
+    composeOptions { kotlinCompilerExtensionVersion = "1.4.2" }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
