@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.31.10"
+        versionCode = 11
+        versionName = "2.31.11"
         multiDexEnabled = true
     }
     buildTypes {
