@@ -65,14 +65,11 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 val IMPERIAL_BLUE = Color(0xFF1A237E)
 val IMPERIAL_RED = Color(0xFFD50000)
-const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
-const val CHAT_ID = "5232430147"
 
 enum class Tier(val label: String, val base: Double, val isHr: Boolean, val isCar: Boolean) {
     POOL("Pool", 50.0, false, false), 
@@ -192,7 +189,6 @@ fun PassengerSuperApp() {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.exists()) {
                                     val storedPw = s.child("password").value?.toString() ?: ""
-                                    // Bypass check if using Google Sign-in dummy password
                                     if (storedPw == pw || pw == "google_secure") {
                                         prefs.edit().clear().apply()
                                         prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN).putString("p", formattedP).putString("e", s.child("email").value?.toString() ?: formattedE).putString("pw", pw).putBoolean("auth", true).apply()
@@ -262,7 +258,7 @@ fun PassengerSuperApp() {
 }
 
 // -----------------------------------------------------------
-// 🚨 TELEGRAM PASSWORD RECOVERY GATEWAY
+// 🚨 PURE OFFICIAL TELEGRAM GATEWAY
 // -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -293,8 +289,9 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                 FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$phone/code").setValue(generatedPin)
                                 
                                 scope.launch(Dispatchers.IO) {
-                                    var backendSuccess = false
+                                    var isSuccess = false
                                     try {
+                                        // 🌐 ONLY PINGS YOUR OFFICIAL BACKEND
                                         val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
@@ -302,22 +299,19 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                         conn.doOutput = true
                                         val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
                                         conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
-                                        if (conn.responseCode in 200..299) { backendSuccess = true }
+                                        
+                                        if (conn.responseCode in 200..299) { 
+                                            isSuccess = true 
+                                        }
                                     } catch(e: Exception) { e.printStackTrace() }
-
-                                    try {
-                                        val msg = "🚨 PASSWORD RECOVERY REQUEST\nPhone: $phone\n🗝️ PIN: $generatedPin"
-                                        val encodedMsg = URLEncoder.encode(msg, "UTF-8")
-                                        URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg").readText()
-                                    } catch(e: Exception) {}
 
                                     withContext(Dispatchers.Main) {
                                         isLoading = false
-                                        step = "PIN"
-                                        if (backendSuccess) {
-                                            Toast.makeText(ctx, "Code sent via Telegram Gateway!", Toast.LENGTH_SHORT).show()
+                                        if (isSuccess) {
+                                            step = "PIN"
+                                            Toast.makeText(ctx, "Code sent via Official Telegram Gateway!", Toast.LENGTH_LONG).show()
                                         } else {
-                                            Toast.makeText(ctx, "Gateway delayed. Contact @Bayerawiwebot for your PIN.", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(ctx, "Gateway unreachable. Please try again later.", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 }
@@ -370,7 +364,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
 }
 
 // -----------------------------------------------------------
-// LOGIN VIEW (WITH RESTORED GOOGLE BUTTON)
+// LOGIN VIEW
 // -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -419,7 +413,6 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
             }
         }
 
-        // --- RESTORED GOOGLE PRESTIGE BUTTON ---
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 24.dp).fillMaxWidth()) {
             Divider(modifier = Modifier.weight(1f), color = Color.LightGray)
             Text(" OR ", color = Color.Gray, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
