@@ -41,3 +41,4 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
+// Force V20 Trigger
