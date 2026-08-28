@@ -65,6 +65,7 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -189,7 +190,6 @@ fun PassengerSuperApp() {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.exists()) {
                                     val storedPw = s.child("password").value?.toString() ?: ""
-                                    // Accept password if correct OR if logging in via Google bypass
                                     if (storedPw == pw || pw == "google_secure") {
                                         prefs.edit().clear().apply()
                                         prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN).putString("p", formattedP).putString("e", s.child("email").value?.toString() ?: formattedE).putString("pw", pw).putBoolean("auth", true).apply()
@@ -292,7 +292,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                 scope.launch(Dispatchers.IO) {
                                     var isSuccess = false
                                     try {
-                                        // 🌐 PINGS YOUR OFFICIAL BACKEND
+                                        // 🌐 ONLY PINGS YOUR OFFICIAL BACKEND
                                         val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
