@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.31.20"
+        versionCode = 21
+        versionName = "2.31.21"
         multiDexEnabled = true
     }
     buildTypes {
@@ -43,3 +43,4 @@ dependencies {
 }
 // Force V20 Trigger
 // Force Version 20 Trigger
+// Force V21 Trigger
