@@ -42,3 +42,4 @@ dependencies {
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 }
 // Force V20 Trigger
+// Force Version 20 Trigger
