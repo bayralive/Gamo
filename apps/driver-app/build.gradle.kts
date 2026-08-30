@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "com.bayra.driver"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.bayra.driver"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 9
-        versionName = "1.8"
+        targetSdk = 36
+        versionCode = 21
+        versionName = "2.31.21"
     }
 
     buildTypes {

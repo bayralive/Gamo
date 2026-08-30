@@ -5,11 +5,11 @@ plugins {
 }
 android {
     namespace = "com.bayra.customer"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.bayra.customer"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 21
         versionName = "2.31.21"
         multiDexEnabled = true
@@ -44,3 +44,4 @@ dependencies {
 // Force V20 Trigger
 // Force Version 20 Trigger
 // Force V21 Trigger
+// API 36 Compliance - V21
