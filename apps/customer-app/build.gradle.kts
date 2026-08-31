@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.31.22"
+        versionCode = 23
+        versionName = "2.31.23"
         multiDexEnabled = true
     }
     buildTypes {
@@ -47,3 +47,4 @@ dependencies {
 // API 36 Compliance - V21
 // Force V22 Full Assembly
 // Force V22 Full Assembly
+// Force V23 UI Polish
