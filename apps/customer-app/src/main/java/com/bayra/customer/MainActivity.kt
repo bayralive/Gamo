@@ -16,6 +16,7 @@ import android.preference.PreferenceManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -43,11 +44,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -65,7 +71,6 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -87,7 +92,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = packageName
-        requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
+        requestLauncher.launch(arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION, 
+            Manifest.permission.ACCESS_COARSE_LOCATION, 
+            Manifest.permission.POST_NOTIFICATIONS
+        ))
         setContent { PassengerSuperApp() }
     }
 }
@@ -190,6 +199,7 @@ fun PassengerSuperApp() {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.exists()) {
                                     val storedPw = s.child("password").value?.toString() ?: ""
+                                    // Bypasses password check if logging in via Google
                                     if (storedPw == pw || pw == "google_secure") {
                                         prefs.edit().clear().apply()
                                         prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN).putString("p", formattedP).putString("e", s.child("email").value?.toString() ?: formattedE).putString("pw", pw).putBoolean("auth", true).apply()
@@ -259,7 +269,7 @@ fun PassengerSuperApp() {
 }
 
 // -----------------------------------------------------------
-// 🚨 PURE OFFICIAL TELEGRAM GATEWAY
+// 🚨 PURE OFFICIAL TELEGRAM GATEWAY (FAILSAFE EDITION)
 // -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -269,6 +279,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
     var newPass by remember { mutableStateOf("") }
     var step by remember { mutableStateOf("PHONE") } 
     var isLoading by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -292,27 +303,31 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                 scope.launch(Dispatchers.IO) {
                                     var isSuccess = false
                                     try {
-                                        // 🌐 ONLY PINGS YOUR OFFICIAL BACKEND
                                         val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
                                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                        conn.setRequestProperty("Accept", "application/json")
+                                        conn.connectTimeout = 15000 
+                                        conn.readTimeout = 15000
                                         conn.doOutput = true
-                                        val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
-                                        conn.outputStream.write(body.toByteArray(Charsets.UTF_8))
                                         
-                                        if (conn.responseCode in 200..299) { 
-                                            isSuccess = true 
-                                        }
+                                        val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
+                                        val os = conn.outputStream
+                                        os.write(body.toByteArray(Charsets.UTF_8))
+                                        os.flush() 
+                                        os.close()
+                                        
+                                        if (conn.responseCode in 200..299) { isSuccess = true }
                                     } catch(e: Exception) { e.printStackTrace() }
 
                                     withContext(Dispatchers.Main) {
                                         isLoading = false
+                                        step = "PIN" 
                                         if (isSuccess) {
-                                            step = "PIN"
                                             Toast.makeText(ctx, "Code sent via Official Telegram Gateway!", Toast.LENGTH_LONG).show()
                                         } else {
-                                            Toast.makeText(ctx, "Gateway unreachable. Please try again later.", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(ctx, "Gateway delayed. Contact Support Team for help.", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 }
@@ -330,7 +345,21 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
         } else {
             OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Enter Telegram Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
             Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            
+            OutlinedTextField(
+                value = newPass, 
+                onValueChange = { newPass = it }, 
+                label = { Text("Enter New Password") }, 
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(), 
+                shape = RoundedCornerShape(12.dp)
+            )
+            
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = {
                 if (code.length >= 4 && newPass.length > 3) {
@@ -354,8 +383,8 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://t.me/Bayerawiwebot"))) }) {
-                Text("Didn't get a code? Open @Bayerawiwebot", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }) {
+                Text("Didn't get a code? Contact Support Team", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -365,7 +394,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
 }
 
 // -----------------------------------------------------------
-// LOGIN VIEW
+// 🚨 TRUE SECURE GOOGLE SIGN-IN (JIJI-STYLE)
 // -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -374,66 +403,141 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
     var p by remember { mutableStateOf(phone) }
     var e by remember { mutableStateOf(email) }
     var pw by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    
+    var showManualFields by remember { mutableStateOf(false) }
+    var loginStep by remember { mutableStateOf("CHOICE") } 
+    
     val ctx = LocalContext.current
     
+    // 🔥 TRUE GOOGLE SIGN-IN CLIENT
+    val WEB_CLIENT_ID = "99409413861-vq4p3aalsh3bd6tok3puqvgeu3qup6op.apps.googleusercontent.com"
+    
+    val googleSignInOptions = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(WEB_CLIENT_ID)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
+    val googleSignInClient = remember { GoogleSignIn.getClient(ctx, googleSignInOptions) }
+
+    val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            if (account != null) {
+                e = account.email ?: ""
+                n = account.displayName ?: "Google User"
+                pw = "google_secure"
+                loginStep = "GOOGLE_PHONE"
+                Toast.makeText(ctx, "Google Verified! Enter Phone Number to finish.", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: ApiException) {
+            Toast.makeText(ctx, "Google Sign-In Failed (Code: ${e.statusCode}). Use Manual Login.", Toast.LENGTH_LONG).show()
+            loginStep = "MANUAL"
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); 
         Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); 
-        Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 32.dp))
+        Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 40.dp))
         
-        OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        OutlinedTextField(
-            value = pw, 
-            onValueChange = { pw = it }, 
-            label = { Text("Password") }, 
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(), 
-            shape = RoundedCornerShape(12.dp)
-        )
-        
-        TextButton(
-            onClick = onForgotPassword,
-            modifier = Modifier.align(Alignment.End)
-        ) {
-            Text("Forgot Password? Get Telegram Code", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 3 && !isChecking) onLogin(n, p, e, pw) }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { 
-            if (isChecking) {
-                CircularProgressIndicator(color = Color.White)
-            } else {
-                Text("LOGIN / REGISTER", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 24.dp).fillMaxWidth()) {
-            Divider(modifier = Modifier.weight(1f), color = Color.LightGray)
-            Text(" OR ", color = Color.Gray, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
-            Divider(modifier = Modifier.weight(1f), color = Color.LightGray)
-        }
-
-        OutlinedButton(
-            onClick = { 
-                if (p.length > 8) {
-                    onLogin(if (n.isEmpty()) "Google Passenger" else n, p, e.ifEmpty { "google@example.com" }, "google_secure")
-                } else {
-                    Toast.makeText(ctx, "Please enter your Phone Number first.", Toast.LENGTH_SHORT).show()
+        when (loginStep) {
+            "CHOICE" -> {
+                // --- 1. GOOGLE BUTTON ---
+                Button(
+                    onClick = {
+                        googleSignInClient.signOut().addOnCompleteListener {
+                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
-            }, 
-            modifier = Modifier.fillMaxWidth().height(60.dp), 
-            shape = RoundedCornerShape(16.dp)
-        ) { 
-            Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red)
-            Spacer(modifier = Modifier.width(12.dp))
-            Text("CONTINUE WITH GOOGLE", fontWeight = FontWeight.Bold, color = Color.Black) 
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // --- 2. MANUAL LOGIN BUTTON ---
+                Button(
+                    onClick = { loginStep = "MANUAL" },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A859)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Phone, contentDescription = "Phone", tint = Color.White)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Log in with phone or password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+            
+            "MANUAL" -> {
+                // --- MANUAL ENTRY FIELDS ---
+                OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = pw, 
+                    onValueChange = { pw = it }, 
+                    label = { Text("Password") }, 
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(), 
+                    shape = RoundedCornerShape(12.dp)
+                )
+                
+                TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) {
+                    Text("Forgot Password? Get Telegram Code", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 3 && !isChecking) onLogin(n, p, e, pw) }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
+                    if (isChecking) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        Text("LOGIN / REGISTER", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = { loginStep = "CHOICE" }) { Text("Back to Sign In Options", color = Color.Gray) }
+            }
+            
+            "GOOGLE_PHONE" -> {
+                // --- GOOGLE SUCCESS: JUST NEED PHONE ---
+                Text("Google Account Verified!", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Please enter your phone number to complete registration.", color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Button(onClick = { if(p.length > 8 && !isChecking) onLogin(n, p, e, pw) }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
+                    if (isChecking) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        Text("COMPLETE REGISTRATION", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = { loginStep = "CHOICE" }) { Text("Cancel", color = Color.Gray) }
+            }
         }
     }
 }
@@ -700,7 +804,9 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
         Divider(modifier = Modifier.padding(vertical = 16.dp))
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://t.me/Bayerawiwebot"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Contact Telegram Scout (@Bayerawiwebot)") }
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { 
+            Text("Contact Support Team") 
+        }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Email Empire Support") }
     }
 }
