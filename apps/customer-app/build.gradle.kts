@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 24
-        versionName = "2.31.24"
+        versionCode = 25
+        versionName = "2.31.25"
         multiDexEnabled = true
     }
     buildTypes {
@@ -52,3 +52,4 @@ dependencies {
 // Force V25 Jiji UX Update
 // Force V23 Build
 // Force V24 True Google Auth
+// Force V25 Native Jiji UI
