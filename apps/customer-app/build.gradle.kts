@@ -10,8 +10,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 23
-        versionName = "2.31.23"
+        versionCode = 24
+        versionName = "2.31.24"
         multiDexEnabled = true
     }
     buildTypes {
@@ -31,6 +31,7 @@ android {
     kotlinOptions { jvmTarget = "11" }
 }
 dependencies {
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.7.0")
     implementation(platform("androidx.compose:compose-bom:2023.01.00"))
@@ -50,3 +51,4 @@ dependencies {
 // Force V23 UI Polish
 // Force V25 Jiji UX Update
 // Force V23 Build
+// Force V24 True Google Auth
