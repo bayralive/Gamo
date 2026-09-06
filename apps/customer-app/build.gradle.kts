@@ -3,17 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.gms.google-services")
 }
+
 android {
     namespace = "com.bayra.customer"
     compileSdk = 36
+    
     defaultConfig {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.31.25"
+        versionCode = 26
+        versionName = "2.31.26"
         multiDexEnabled = true
     }
+    
     buildTypes {
         getByName("debug") { isCrunchPngs = false }
         getByName("release") {
@@ -22,34 +25,38 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+    
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.4.2" }
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    
     kotlinOptions { jvmTarget = "11" }
 }
+
 dependencies {
-    implementation("com.google.android.gms:play-services-auth:20.7.0")
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.7.0")
     implementation(platform("androidx.compose:compose-bom:2023.01.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("io.coil-kt:coil-compose:2.4.0")
-    implementation("com.google.firebase:firebase-database-ktx:20.2.2")
-    implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
+    
+    // 🔥 FIREBASE AUTH & RTDB
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-database-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx")
+    
+    // Maps
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    
+    // 🔥 STABLE CREDENTIAL MANAGER
+    implementation("androidx.credentials:credentials:1.2.2")
+    implementation("androidx.credentials:credentials-play-services-auth:1.2.2")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }
-// Force V20 Trigger
-// Force Version 20 Trigger
-// Force V21 Trigger
-// API 36 Compliance - V21
-// Force V22 Full Assembly
-// Force V22 Full Assembly
-// Force V23 UI Polish
-// Force V25 Jiji UX Update
-// Force V23 Build
-// Force V24 True Google Auth
-// Force V25 Native Jiji UI
+// Force V26 True Firebase Auth
