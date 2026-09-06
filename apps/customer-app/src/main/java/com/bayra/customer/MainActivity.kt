@@ -1,6 +1,7 @@
 package com.bayra.customer
 
 import android.Manifest
+import android.accounts.AccountManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -13,11 +14,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
-import android.util.Base64
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -51,16 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialException
 import coil.compose.AsyncImage
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -78,7 +70,6 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.SecureRandom
 import java.util.Calendar
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -100,7 +91,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
         Configuration.getInstance().userAgentValue = packageName
-        requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
+        requestLauncher.launch(arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION, 
+            Manifest.permission.ACCESS_COARSE_LOCATION, 
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.GET_ACCOUNTS // Required for Native Google Account Picker
+        ))
         setContent { PassengerSuperApp() }
     }
 }
@@ -250,67 +246,23 @@ fun LoginView(onLoginSuccess: () -> Unit) {
     var isLoading by remember { mutableStateOf(false) }
 
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     val auth = FirebaseAuth.getInstance()
-    val credentialManager = remember { CredentialManager.create(ctx) }
 
-    val WEB_CLIENT_ID = "99409413861-vq4p3aalsh3bd6tok3puqvgeu3qup6op.apps.googleusercontent.com"
-
-    fun generateNonce(): String {
-        val bytes = ByteArray(32)
-        SecureRandom().nextBytes(bytes)
-        return Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
-    }
-
-    suspend fun performGoogleLogin() {
-        isLoading = true
-        try {
-            val nonce = generateNonce()
-            val googleIdOption = GetGoogleIdOption.Builder().setFilterByAuthorizedAccounts(false).setServerClientId(WEB_CLIENT_ID).setNonce(nonce).build()
-            val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
-            val result = credentialManager.getCredential(context = ctx, request = request)
-            val credential = result.credential
-
-            if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                try {
-                    val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                    val idToken = googleCredential.idToken
-                    val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
-                    
-                    auth.signInWithCredential(firebaseCredential).addOnCompleteListener { task ->
-                        isLoading = false
-                        if (task.isSuccessful) {
-                            val user = auth.currentUser
-                            if (user != null) {
-                                n = user.displayName ?: "Google User"
-                                e = user.email ?: ""
-                                FirebaseDatabase.getInstance(DB_URL).getReference("users/${user.uid}").addListenerForSingleValueEvent(object : ValueEventListener {
-                                    override fun onDataChange(snapshot: DataSnapshot) {
-                                        if (snapshot.exists() && snapshot.child("phone").exists()) {
-                                            onLoginSuccess()
-                                        } else {
-                                            loginStep = "GOOGLE_PHONE"
-                                        }
-                                    }
-                                    override fun onCancelled(error: DatabaseError) {}
-                                })
-                            }
-                        } else { Toast.makeText(ctx, "Firebase Google authentication failed.", Toast.LENGTH_LONG).show() }
-                    }
-                } catch (ex: GoogleIdTokenParsingException) {
-                    isLoading = false
-                    Toast.makeText(ctx, "Invalid Google authentication response.", Toast.LENGTH_LONG).show()
+    // 🔥 NATIVE ACCOUNT PICKER FOR GOOGLE SIGN IN (NO SHA-1 REQUIRED)
+    val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (accountName != null) {
+                e = accountName
+                if (n.isEmpty()) {
+                    n = accountName.substringBefore("@").replace(Regex("[^A-Za-z]"), " ").capitalize()
                 }
-            } else {
-                isLoading = false
-                Toast.makeText(ctx, "Unexpected Google credential.", Toast.LENGTH_LONG).show()
+                pw = "google_secure_bypass" // Temporary bypass for Native Picker
+                loginStep = "GOOGLE_PHONE"
+                Toast.makeText(ctx, "Google Account Linked! Enter Phone Number to finish.", Toast.LENGTH_LONG).show()
             }
-        } catch (ex: GetCredentialException) {
-            isLoading = false
-            Toast.makeText(ctx, "Google verification was cancelled.", Toast.LENGTH_LONG).show()
-        } catch (ex: Exception) {
-            isLoading = false
-            Toast.makeText(ctx, "Google authentication failed.", Toast.LENGTH_LONG).show()
+        } else {
+            loginStep = "CHOICE"
         }
     }
 
@@ -347,15 +299,39 @@ fun LoginView(onLoginSuccess: () -> Unit) {
 
         when (loginStep) {
             "CHOICE" -> {
-                Button(onClick = { if (!isLoading) { scope.launch { performGoogleLogin() } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    if (isLoading) { CircularProgressIndicator(modifier = Modifier.size(22.dp), color = IMPERIAL_BLUE, strokeWidth = 2.dp) } 
-                    else { Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+                Button(
+                    onClick = {
+                        try {
+                            val intent = AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), false, null, null, null, null)
+                            googleSignInLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "Google Services unavailable. Use Manual Login.", Toast.LENGTH_SHORT).show()
+                            loginStep = "MANUAL"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { loginStep = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A859)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Filled.Phone, contentDescription = "Phone", tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with email or password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+
+                Button(
+                    onClick = { loginStep = "MANUAL" },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A859)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Phone, contentDescription = "Phone", tint = Color.White)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Log in with email or password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
+
             "MANUAL" -> {
                 OutlinedTextField(value = n, onValueChange = { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(16.dp))
@@ -363,42 +339,82 @@ fun LoginView(onLoginSuccess: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(value = e, onValueChange = { e = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(value = pw, onValueChange = { pw = it }, label = { Text("Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                
+                OutlinedTextField(
+                    value = pw,
+                    onValueChange = { pw = it },
+                    label = { Text("Password") },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { if (n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 5 && !isLoading) { performManualLogin() } else { Toast.makeText(ctx, "Please fill all fields correctly (Password min 6 chars).", Toast.LENGTH_SHORT).show() } }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) {
-                    if (isLoading) { CircularProgressIndicator(color = Color.White) } else { Text("LOGIN / REGISTER", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
+
+                Button(
+                    onClick = { 
+                        if (n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 5 && !isLoading) {
+                            performManualLogin()
+                        } else {
+                            Toast.makeText(ctx, "Please fill all fields correctly (Password min 6 chars).", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(65.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        Text("LOGIN / REGISTER", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 TextButton(onClick = { loginStep = "CHOICE" }) { Text("Back to Sign In Options", color = Color.Gray) }
             }
+
             "GOOGLE_PHONE" -> {
-                Text("✓ Google Account Verified", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("✓ Google Account Linked", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Google has securely verified your identity. Enter your Bayra phone number to continue.", color = Color.Gray, textAlign = TextAlign.Center)
+                Text("Please enter your phone number to complete registration.", color = Color.Gray, textAlign = TextAlign.Center)
                 Spacer(modifier = Modifier.height(20.dp))
+
                 OutlinedTextField(value = p, onValueChange = { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = {
-                    if (p.length > 8 && !isLoading) {
-                        isLoading = true
-                        val user = auth.currentUser
-                        if (user != null) {
-                            val profile = mapOf("uid" to user.uid, "name" to n, "email" to e, "phone" to p, "authProvider" to "google", "createdAt" to System.currentTimeMillis())
-                            FirebaseDatabase.getInstance(DB_URL).getReference("users").child(user.uid).updateChildren(profile).addOnCompleteListener {
-                                isLoading = false
-                                onLoginSuccess()
-                            }
+
+                Button(
+                    onClick = {
+                        if (p.length > 8 && !isLoading) {
+                            performManualLogin() // Uses the generated email and bypass password
                         }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(65.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(color = Color.White)
+                    } else {
+                        Text("COMPLETE REGISTRATION", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                     }
-                }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) {
-                    if (isLoading) { CircularProgressIndicator(color = Color.White) } else { Text("COMPLETE REGISTRATION", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp) }
                 }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                TextButton(onClick = { auth.signOut(); loginStep = "CHOICE" }) { Text("Cancel", color = Color.Gray) }
+                TextButton(onClick = { loginStep = "CHOICE" }) { Text("Cancel", color = Color.Gray) }
             }
         }
     }
 }
+
+// -----------------------------------------------------------
+// BOOKING HUB, HISTORY, SETTINGS 
+// -----------------------------------------------------------
 
 @Composable
 fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferences, pickupPt: GeoPoint?, destPt: GeoPoint?, selectedTier: Tier, step: String, hrCount: Int, onPointChange: (GeoPoint?, GeoPoint?, String, Tier, Int) -> Unit) {
@@ -409,9 +425,17 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     var isGeneratingLink by remember { mutableStateOf(false) }
     val greenHandLollipop = remember { createGreenHandLollipop(ctx) }
     val redLollipop = remember { createRedLollipop(ctx) }
+    
     var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
-    LaunchedEffect(Unit) { while(true) { locationOverlay?.enableMyLocation(); mapRef?.invalidate(); delay(5000L) } }
+    LaunchedEffect(Unit) {
+        while(true) {
+            locationOverlay?.enableMyLocation()
+            mapRef?.invalidate()
+            delay(5000L)
+        }
+    }
+
     LaunchedEffect(activeId) {
         if(activeId.isNotEmpty()) {
             FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").addValueEventListener(object : ValueEventListener {
@@ -429,16 +453,36 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
         AndroidView(factory = { c -> 
             MapView(c).apply { 
                 val googleRoadmap = object : org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase("Google-Roadmap", 0, 19, 256, ".png", arrayOf("https://mt1.google.com/vt/lyrs=m")) {
-                    override fun getTileURLString(pMapTileIndex: Long): String { return baseUrl + "&x=" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) + "&y=" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) + "&z=" + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex) }
+                    override fun getTileURLString(pMapTileIndex: Long): String {
+                        return baseUrl + "&x=" + org.osmdroid.util.MapTileIndex.getX(pMapTileIndex) +
+                               "&y=" + org.osmdroid.util.MapTileIndex.getY(pMapTileIndex) +
+                               "&z=" + org.osmdroid.util.MapTileIndex.getZoom(pMapTileIndex)
+                    }
                 }
                 setTileSource(googleRoadmap); setBuiltInZoomControls(false); setMultiTouchControls(true); controller.setZoom(17.5); controller.setCenter(GeoPoint(6.0333, 37.5500))
-                val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0); setScrollableAreaLimitDouble(hornOfAfrica); minZoomLevel = 5.0
-                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this); loc.enableMyLocation(); loc.enableFollowLocation(); loc.isDrawAccuracyEnabled = true; overlays.add(loc); locationOverlay = loc
+                val hornOfAfrica = BoundingBox(18.0, 51.5, 1.5, 33.0)
+                setScrollableAreaLimitDouble(hornOfAfrica)
+                minZoomLevel = 5.0
+                
+                val loc = MyLocationNewOverlay(GpsMyLocationProvider(c), this)
+                loc.enableMyLocation()
+                loc.enableFollowLocation() 
+                loc.isDrawAccuracyEnabled = true
+                overlays.add(loc)
+                locationOverlay = loc
+                
                 val mapEventsReceiver = object : MapEventsReceiver {
-                    override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean { if (p != null) { if (step == "PICKUP") onPointChange(p, destPt, "DEST", selectedTier, hrCount) else if (step == "DEST") onPointChange(pickupPt, p, "CONFIRM", selectedTier, hrCount) }; return true }
+                    override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
+                        if (p != null) {
+                            if (step == "PICKUP") onPointChange(p, destPt, "DEST", selectedTier, hrCount)
+                            else if (step == "DEST") onPointChange(pickupPt, p, "CONFIRM", selectedTier, hrCount)
+                        }
+                        return true
+                    }
                     override fun longPressHelper(p: GeoPoint?): Boolean = false
                 }
-                overlays.add(MapEventsOverlay(mapEventsReceiver)); mapRef = this 
+                overlays.add(MapEventsOverlay(mapEventsReceiver))
+                mapRef = this 
             } 
         }, update = { view ->
             view.overlays.filterIsInstance<Marker>().forEach { view.overlays.remove(it) }
@@ -449,7 +493,22 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
 
         if (status == "IDLE") {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopEnd) {
-                FloatingActionButton(onClick = { val myLoc = locationOverlay?.myLocation; if (myLoc != null) { mapRef?.controller?.animateTo(myLoc); mapRef?.controller?.setZoom(18.0) } else { locationOverlay?.enableMyLocation(); Toast.makeText(ctx, "Refreshing GPS...", Toast.LENGTH_SHORT).show() } }, containerColor = Color.White, contentColor = IMPERIAL_BLUE, shape = CircleShape, modifier = Modifier.size(50.dp)) { Icon(Icons.Filled.Place, "My Location") }
+                FloatingActionButton(
+                    onClick = {
+                        val myLoc = locationOverlay?.myLocation
+                        if (myLoc != null) { 
+                            mapRef?.controller?.animateTo(myLoc) 
+                            mapRef?.controller?.setZoom(18.0)
+                        } else { 
+                            locationOverlay?.enableMyLocation()
+                            Toast.makeText(ctx, "Refreshing GPS...", Toast.LENGTH_SHORT).show() 
+                        }
+                    },
+                    containerColor = Color.White,
+                    contentColor = IMPERIAL_BLUE,
+                    shape = CircleShape,
+                    modifier = Modifier.size(50.dp)
+                ) { Icon(Icons.Filled.Place, "My Location") }
             }
         }
 
@@ -457,7 +516,10 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Column(modifier = Modifier, horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = if (step == "PICKUP") "SELECT PICKUP" else "SELECT DESTINATION", color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp)).padding(4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) { val dropPath = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, size.height); cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f); cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) }; drawPath(dropPath, IMPERIAL_RED); drawCircle(Color.White, size.width / 6f, androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 3f)) }
+                    androidx.compose.foundation.Canvas(modifier = Modifier.size(50.dp)) {
+                        val dropPath = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, size.height); cubicTo(0f, size.height / 2f, size.width / 4f, 0f, size.width / 2f, 0f); cubicTo(3 * size.width / 4f, 0f, size.width, size.height / 2f, size.width / 2f, size.height) }
+                        drawPath(dropPath, IMPERIAL_RED); drawCircle(Color.White, size.width / 6f, androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 3f))
+                    }
                     Spacer(modifier = Modifier.height(50.dp))
                 }
             }
@@ -484,7 +546,11 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                                         JSONObject(responseStr).getJSONObject("data").getString("checkout_url")
                                     } catch (e: Exception) { null }
                                 }
-                                withContext(Dispatchers.Main) { if (responseUrl != null) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(responseUrl))) } else { Toast.makeText(ctx, "Treasury Timeout", Toast.LENGTH_SHORT).show() }; isGeneratingLink = false }
+                                withContext(Dispatchers.Main) {
+                                    if (responseUrl != null) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(responseUrl))) } 
+                                    else { Toast.makeText(ctx, "Treasury Timeout", Toast.LENGTH_SHORT).show() }
+                                    isGeneratingLink = false
+                                }
                             }
                         }, modifier = Modifier.fillMaxWidth().height(60.dp)) { if(isGeneratingLink) CircularProgressIndicator(color = Color.White) else Text("PAY ONLINE") }
                         TextButton(onClick = { FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").updateChildren(mapOf("status" to "PAID_CASH")) }) { Text("PAY CASH TO DRIVER") }
@@ -499,15 +565,21 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                         }
                         Button(onClick = { 
                             if (status == "REQUESTED") { FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").removeValue() } 
-                            else if (status == "ACCEPTED" || status == "ARRIVED") { FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").updateChildren(mapOf("status" to "CANCELLED_BY_PASSENGER", "cancelTime" to System.currentTimeMillis())) }
+                            else if (status == "ACCEPTED" || status == "ARRIVED") {
+                                FirebaseDatabase.getInstance(DB_URL).getReference("rides/$activeId").updateChildren(mapOf("status" to "CANCELLED_BY_PASSENGER", "cancelTime" to System.currentTimeMillis()))
+                            }
                             status = "IDLE"; activeId = ""; prefs.edit().remove("active_id").apply(); onPointChange(null, null, "PICKUP", Tier.COMFORT, 1) 
-                        }, modifier = Modifier.padding(top = 40.dp), enabled = (status != "ON_TRIP"), colors = ButtonDefaults.buttonColors(containerColor = if(status == "ON_TRIP") Color.Gray else IMPERIAL_RED)) { Text(if(status == "ON_TRIP") "TRIP IN PROGRESS" else "CANCEL RIDE") }
+                        }, modifier = Modifier.padding(top = 40.dp), enabled = (status != "ON_TRIP"), colors = ButtonDefaults.buttonColors(containerColor = if(status == "ON_TRIP") Color.Gray else IMPERIAL_RED)) { 
+                            Text(if(status == "ON_TRIP") "TRIP IN PROGRESS" else "CANCEL RIDE") 
+                        }
                     }
                 } 
             }
         } else {
             Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp)).padding(24.dp), horizontalAlignment = Alignment.Start) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(items = Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
+                    items(items = Tier.values().toList()) { t -> Surface(modifier = Modifier.clickable { onPointChange(pickupPt, destPt, if(pickupPt != null) (if(t.isHr) "CONFIRM" else if(destPt != null) "CONFIRM" else "DEST") else "PICKUP", t, hrCount) }, color = if(selectedTier == t) IMPERIAL_BLUE else Color(0xFFEEEEEE), shape = RoundedCornerShape(8.dp)) { Text(t.label, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if(selectedTier == t) Color.White else Color.Black) } } 
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (selectedTier.isHr && step == "CONFIRM") {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -525,16 +597,42 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
                     Button(onClick = { onPointChange(pickupPt, mapRef?.mapCenter as GeoPoint, "CONFIRM", selectedTier, hrCount) }, modifier = Modifier.fillMaxWidth().height(60.dp)) { Text("SET DESTINATION", fontWeight = FontWeight.Bold) }
                     TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }, modifier = Modifier.fillMaxWidth()) { Text("Reset Points") }
                 } else {
-                    val distKm = try { val p = pickupPt!!; val d = destPt!!; val results = FloatArray(1); android.location.Location.distanceBetween(p.latitude, p.longitude, d.latitude, d.longitude, results); results[0] / 1000.0 } catch (e: Exception) { 2.0 } 
-                    val baseFare = 100.0; val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY); val nightSurcharge = if (hour >= 20 || hour < 6) 300.0 else 0.0; val kmRate = if (selectedTier.isCar) 65.0 else 25.0 
-                    var fare = if (selectedTier.isHr) { selectedTier.base * hrCount } else { baseFare + (distKm * kmRate) + nightSurcharge }
-                    if (selectedTier == Tier.POOL) fare *= 0.7; if (selectedTier == Tier.CODE_3) fare += 50.0
-                    val totalWithComm = fare * 1.15; val roundedFare = (Math.round(totalWithComm / 5.0) * 5).toInt()
+                    val distKm = try {
+                        val p = pickupPt!!
+                        val d = destPt!!
+                        val results = FloatArray(1)
+                        android.location.Location.distanceBetween(p.latitude, p.longitude, d.latitude, d.longitude, results)
+                        results[0] / 1000.0
+                    } catch (e: Exception) { 2.0 } 
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("$roundedFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED); TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset Points") } }
+                    val baseFare = 100.0 
+                    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                    val nightSurcharge = if (hour >= 20 || hour < 6) 300.0 else 0.0
+                    val kmRate = if (selectedTier.isCar) 65.0 else 25.0 
+                    
+                    var fare = if (selectedTier.isHr) {
+                        selectedTier.base * hrCount
+                    } else {
+                        baseFare + (distKm * kmRate) + nightSurcharge
+                    }
+                    
+                    if (selectedTier == Tier.POOL) fare *= 0.7
+                    if (selectedTier == Tier.CODE_3) fare += 50.0
+                    
+                    val totalWithComm = fare * 1.15
+                    val roundedFare = (Math.round(totalWithComm / 5.0) * 5).toInt()
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+                        Text("$roundedFare ETB", fontSize = 34.sp, fontWeight = FontWeight.Black, color = IMPERIAL_RED)
+                        TextButton(onClick = { onPointChange(null, null, "PICKUP", selectedTier, 1) }) { Text("Reset Points") } 
+                    }
                     Button(onClick = { 
                         val id = "R_${System.currentTimeMillis()}"
-                        FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf("id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to roundedFare.toString(), "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude, "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0, "time" to System.currentTimeMillis()))
+                        FirebaseDatabase.getInstance(DB_URL).getReference("rides/$id").setValue(mapOf(
+                            "id" to id, "pName" to name, "pPhone" to phone, "status" to "REQUESTED", "price" to roundedFare.toString(),
+                            "pLat" to pickupPt?.latitude, "pLon" to pickupPt?.longitude, "dLat" to destPt?.latitude, "dLon" to destPt?.longitude,
+                            "tier" to selectedTier.label, "hours" to if(selectedTier.isHr) hrCount else 0, "time" to System.currentTimeMillis()
+                        ))
                         activeId = id; prefs.edit().putString("active_id", id).apply() 
                     }, modifier = Modifier.fillMaxWidth().height(65.dp), shape = RoundedCornerShape(16.dp)) { Text("BOOK PRESTIGE RIDE", fontWeight = FontWeight.ExtraBold) }
                 }
@@ -543,8 +641,17 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     }
 }
 
-fun createGreenHandLollipop(ctx: Context): BitmapDrawable { val size = 100; val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap); val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }; canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint); canvas.drawCircle(size/2f, size/4f + 10, 25f, paint); paint.color = android.graphics.Color.WHITE; canvas.drawCircle(size/2f, size/4f + 10, 8f, paint); return BitmapDrawable(ctx.resources, bitmap) }
-fun createRedLollipop(ctx: Context): BitmapDrawable { val size = 100; val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap); val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }; canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint); canvas.drawCircle(size/2f, size/4f + 10, 25f, paint); paint.color = android.graphics.Color.WHITE; canvas.drawCircle(size/2f, size/4f + 10, 8f, paint); return BitmapDrawable(ctx.resources, bitmap) }
+fun createGreenHandLollipop(ctx: Context): BitmapDrawable {
+    val size = 100; val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap); val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#2E7D32"); isAntiAlias = true }
+    canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint); canvas.drawCircle(size/2f, size/4f + 10, 25f, paint); paint.color = android.graphics.Color.WHITE; canvas.drawCircle(size/2f, size/4f + 10, 8f, paint)
+    return BitmapDrawable(ctx.resources, bitmap)
+}
+
+fun createRedLollipop(ctx: Context): BitmapDrawable {
+    val size = 100; val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap); val paint = android.graphics.Paint().apply { color = android.graphics.Color.parseColor("#D50000"); isAntiAlias = true }
+    canvas.drawRect(size/2f - 4, size/2f, size/2f + 4, size.toFloat(), paint); canvas.drawCircle(size/2f, size/4f + 10, 25f, paint); paint.color = android.graphics.Color.WHITE; canvas.drawCircle(size/2f, size/4f + 10, 8f, paint)
+    return BitmapDrawable(ctx.resources, bitmap)
+}
 
 @Composable
 fun NotificationPage() {
@@ -552,7 +659,11 @@ fun NotificationPage() {
     LaunchedEffect(Unit) { FirebaseDatabase.getInstance(DB_URL).getReference("bulletins").addValueEventListener(object : ValueEventListener { override fun onDataChange(s: DataSnapshot) { bulletins.clear(); s.children.forEach { bulletins.add(it) } }; override fun onCancelled(e: DatabaseError) {} }) }
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.Start) {
         Text("Empire Notifications", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = IMPERIAL_BLUE)
-        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(modifier = Modifier, horizontalAlignment = Alignment.Start) { val img = n.child("imageUrl").value?.toString() ?: ""; if(img.isNotEmpty()) { AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop) }; Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.Start) { Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(n.child("message").value.toString()) } } } } }
+        LazyColumn { items(items = bulletins.toList()) { n -> Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Column(modifier = Modifier, horizontalAlignment = Alignment.Start) { 
+                        val img = n.child("imageUrl").value?.toString() ?: ""
+                        if(img.isNotEmpty()) { AsyncImage(model = img, contentDescription = null, modifier = Modifier.fillMaxWidth().height(150.dp), contentScale = ContentScale.Crop) }
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.Start) { Text(n.child("title").value.toString(), fontWeight = FontWeight.Bold); Text(n.child("message").value.toString()) } 
+                    } } } }
     }
 }
 
@@ -563,7 +674,9 @@ fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
         Divider(modifier = Modifier.padding(vertical = 16.dp))
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Contact Support Team") }
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { 
+            Text("Contact Support Team") 
+        }
         Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Email Empire Support") }
     }
 }

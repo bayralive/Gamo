@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 26
-        versionName = "2.31.26"
+        versionCode = 27
+        versionName = "2.31.27"
         multiDexEnabled = true
     }
     
@@ -60,3 +60,4 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }
 // Force V26 True Firebase Auth
+// Force V27 Native Account Picker Bypass
