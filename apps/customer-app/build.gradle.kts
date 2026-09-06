@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 28
-        versionName = "2.31.28"
+        versionCode = 29
+        versionName = "2.31.29"
         multiDexEnabled = true
     }
     
@@ -63,3 +63,4 @@ dependencies {
 // Force V26 True Firebase Auth
 // Force V27 Native Account Picker Bypass
 // Force V28 Patch
+// Deploy Version 29
