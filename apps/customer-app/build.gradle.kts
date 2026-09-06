@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 27
-        versionName = "2.31.27"
+        versionCode = 28
+        versionName = "2.31.28"
         multiDexEnabled = true
     }
     
@@ -38,6 +38,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.recaptcha:recaptcha:18.4.0")
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.activity:activity-compose:1.7.0")
     implementation(platform("androidx.compose:compose-bom:2023.01.00"))
@@ -61,3 +62,4 @@ dependencies {
 }
 // Force V26 True Firebase Auth
 // Force V27 Native Account Picker Bypass
+// Force V28 Patch
