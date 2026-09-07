@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 32
-        versionName = "2.31.32"
+        versionCode = 34
+        versionName = "2.31.34"
         multiDexEnabled = true
     }
     
@@ -66,3 +66,4 @@ dependencies {
 // Force V30 True Firebase Extractor
 // Force V31 Fallback to App Level Credentials
 // Force V32 Return to Native Account Picker
+// Force V34 Native Account Picker
