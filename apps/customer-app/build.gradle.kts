@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 30
-        versionName = "2.31.30"
+        versionCode = 31
+        versionName = "2.31.31"
         multiDexEnabled = true
     }
     
@@ -48,7 +48,6 @@ dependencies {
     
     // 🔥 FIREBASE AUTH & RTDB
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
-    implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
     
@@ -65,3 +64,4 @@ dependencies {
 // Force V28 Patch
 // Deploy Version 29
 // Force V30 True Firebase Extractor
+// Force V31 Fallback to App Level Credentials
