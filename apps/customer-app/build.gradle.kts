@@ -52,3 +52,4 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
 // Force V34 Image 2 Official Google Bottom Sheet
+// Force V34 Jarsigner Direct Signature

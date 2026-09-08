@@ -25,8 +25,20 @@ jobs:
     - name: Decode Keystore from Secrets
       run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android_keystore.jks
 
-    - name: Build and Sign Customer Release Bundle (.aab)
-      run: ./gradlew :apps:customer-app:bundleRelease -Pandroid.injected.signing.storeFile=$(pwd)/android_keystore.jks -Pandroid.injected.signing.storePassword="${{ secrets.RELEASE_PASSWORD }}" -Pandroid.injected.signing.keyAlias="${{ secrets.RELEASE_ALIAS }}" -Pandroid.injected.signing.keyPassword="${{ secrets.RELEASE_KEY_PASSWORD }}" --stacktrace
+    - name: Build Customer Release Bundle (.aab)
+      run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
+
+    - name: Cryptographically Sign AAB with jarsigner
+      run: |
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore android_keystore.jks \
+          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
+          -keypass "${{ secrets.RELEASE_KEY_PASSWORD }}" \
+          apps/customer-app/build/outputs/bundle/release/*.aab \
+          "${{ secrets.RELEASE_ALIAS }}"
+
+    - name: Verify AAB Signature
+      run: jarsigner -verify -verbose -certs apps/customer-app/build/outputs/bundle/release/*.aab
 
     - name: Upload Signed Customer App Bundle (.aab)
       uses: actions/upload-artifact@v4
