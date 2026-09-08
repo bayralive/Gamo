@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v3
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v3
       with:
         java-version: '17'
         distribution: 'temurin'
@@ -22,11 +22,14 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build Customer Release Bundle (.aab)
-      run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
+    - name: Decode Keystore from Secrets
+      run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android_keystore.jks
 
-    - name: Upload Customer App Bundle (.aab)
-      uses: actions/upload-artifact@v4
+    - name: Build and Sign Customer Release Bundle (.aab)
+      run: ./gradlew :apps:customer-app:bundleRelease -Pandroid.injected.signing.storeFile=$(pwd)/android_keystore.jks -Pandroid.injected.signing.storePassword="${{ secrets.RELEASE_PASSWORD }}" -Pandroid.injected.signing.keyAlias="${{ secrets.RELEASE_ALIAS }}" -Pandroid.injected.signing.keyPassword="${{ secrets.RELEASE_KEY_PASSWORD }}" --stacktrace
+
+    - name: Upload Signed Customer App Bundle (.aab)
+      uses: actions/upload-artifact@v3
       with:
         name: customer-app-release-aab
         path: apps/customer-app/build/outputs/bundle/release/*.aab
