@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 33
-        versionName = "2.31.33"
+        versionCode = 34
+        versionName = "2.31.34"
         multiDexEnabled = true
     }
 
@@ -51,3 +51,4 @@ dependencies {
     // 🔥 OFFICIAL GOOGLE PLAY AUTH (For professional Google bottom sheet with avatars)
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
+// Force V34 Image 2 Official Google Bottom Sheet
