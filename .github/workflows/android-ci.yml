@@ -23,7 +23,11 @@ jobs:
       run: chmod +x gradlew
 
     - name: Decode Keystore from Secrets
-      run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android_keystore.jks
+      env:
+        RAW_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
+      run: |
+        echo "$RAW_KEYSTORE" | tr -d '\r\n ' | base64 -d > android_keystore.jks
+        ls -lh android_keystore.jks
 
     - name: Build Customer Release Bundle (.aab)
       run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
@@ -38,7 +42,7 @@ jobs:
           "${{ secrets.RELEASE_ALIAS }}"
 
     - name: Verify AAB Signature
-      run: jarsigner -verify -verbose -certs apps/customer-app/build/outputs/bundle/release/*.aab
+      run: jarsigner -verify apps/customer-app/build/outputs/bundle/release/*.aab
 
     - name: Upload Signed Customer App Bundle (.aab)
       uses: actions/upload-artifact@v4

@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 35
-        versionName = "2.31.35"
+        versionCode = 36
+        versionName = "2.31.36"
         multiDexEnabled = true
     }
 
@@ -48,9 +48,7 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 
-    // 🔥 OFFICIAL GOOGLE PLAY AUTH (For professional Google bottom sheet with avatars)
+    // 🔥 OFFICIAL GOOGLE PLAY AUTH (For Image 2 Bottom Sheet with Avatars)
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
-// Force V34 Image 2 Official Google Bottom Sheet
-// Force V34 Jarsigner Direct Signature
-// Force V35 Jarsigner Release
+// Force V36 Real Google Bottom Sheet

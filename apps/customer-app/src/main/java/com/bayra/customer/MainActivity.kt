@@ -1,7 +1,6 @@
 package com.bayra.customer
 
 import android.Manifest
-import android.accounts.AccountManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -38,6 +37,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +52,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -96,8 +100,7 @@ class MainActivity : ComponentActivity() {
         requestLauncher.launch(arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION, 
             Manifest.permission.ACCESS_COARSE_LOCATION, 
-            Manifest.permission.POST_NOTIFICATIONS,
-            Manifest.permission.GET_ACCOUNTS 
+            Manifest.permission.POST_NOTIFICATIONS
         ))
         setContent { PassengerSuperApp() }
     }
@@ -129,6 +132,7 @@ fun PassengerSuperApp() {
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
+    var pPhoto by rememberSaveable { mutableStateOf(prefs.getString("photo", "") ?: "") }
     var pPass by rememberSaveable { mutableStateOf(prefs.getString("pw", "") ?: "") }
     var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
     
@@ -148,11 +152,9 @@ fun PassengerSuperApp() {
     
     BackHandler {
         if (isAuth) {
-            if (currentView != "MAP") {
-                currentView = "MAP"
-            } else if (step != "PICKUP") {
-                step = "PICKUP"; pickupPt = null; destPt = null
-            } else {
+            if (currentView != "MAP") { currentView = "MAP" } 
+            else if (step != "PICKUP") { step = "PICKUP"; pickupPt = null; destPt = null } 
+            else {
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastBackPressTime < 2000) { activity?.finish() } 
                 else { lastBackPressTime = currentTime; Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).show() }
@@ -187,10 +189,11 @@ fun PassengerSuperApp() {
                     LoginView(
                         name = pName, phone = pPhone, email = pEmail, isChecking = isCheckingLogin,
                         onForgotPassword = { isRecoveringPassword = true }
-                    ) { n, p, e, pw -> 
+                    ) { n, p, e, photo, pw -> 
                         val formattedN = n.ifBlank { "Passenger" }
                         val formattedP = p.ifBlank { "N/A" }
                         val formattedE = e.ifBlank { "none@example.com" }
+                        val formattedPhoto = photo
 
                         if (formattedP == "N/A") return@LoginView
 
@@ -200,21 +203,49 @@ fun PassengerSuperApp() {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.exists()) {
                                     val storedPw = s.child("password").value?.toString() ?: ""
-                                    if (storedPw == pw || pw == "google_secure_bypass") {
+                                    if (storedPw == pw || pw == "google_verified") {
+                                        val existingPhoto = s.child("photoUrl").value?.toString() ?: formattedPhoto
                                         prefs.edit().clear().apply()
-                                        prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN).putString("p", formattedP).putString("e", s.child("email").value?.toString() ?: formattedE).putString("pw", pw).putBoolean("auth", true).apply()
-                                        pName = s.child("name").value?.toString() ?: formattedN; pPhone = formattedP; pEmail = s.child("email").value?.toString() ?: formattedE; pPass = pw; isAuth = true
+                                        prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN)
+                                            .putString("p", formattedP)
+                                            .putString("e", s.child("email").value?.toString() ?: formattedE)
+                                            .putString("photo", existingPhoto)
+                                            .putString("pw", pw)
+                                            .putBoolean("auth", true).apply()
+                                        pName = s.child("name").value?.toString() ?: formattedN
+                                        pPhone = formattedP
+                                        pEmail = s.child("email").value?.toString() ?: formattedE
+                                        pPhoto = existingPhoto
+                                        pPass = pw
+                                        isAuth = true
                                     } else {
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
                                 } else {
                                     FirebaseDatabase.getInstance(DB_URL).getReference("users/$formattedP").setValue(
-                                        mapOf("name" to formattedN, "phone" to formattedP, "email" to formattedE, "password" to pw, "timestamp" to System.currentTimeMillis())
+                                        mapOf(
+                                            "name" to formattedN,
+                                            "phone" to formattedP,
+                                            "email" to formattedE,
+                                            "photoUrl" to formattedPhoto,
+                                            "password" to pw,
+                                            "timestamp" to System.currentTimeMillis()
+                                        )
                                     )
                                     prefs.edit().clear().apply()
-                                    prefs.edit().putString("n", formattedN).putString("p", formattedP).putString("e", formattedE).putString("pw", pw).putBoolean("auth", true).apply()
-                                    pName = formattedN; pPhone = formattedP; pEmail = formattedE; pPass = pw; isAuth = true
-                                    Toast.makeText(ctx, "Account Created Successfully!", Toast.LENGTH_SHORT).show()
+                                    prefs.edit().putString("n", formattedN)
+                                        .putString("p", formattedP)
+                                        .putString("e", formattedE)
+                                        .putString("photo", formattedPhoto)
+                                        .putString("pw", pw)
+                                        .putBoolean("auth", true).apply()
+                                    pName = formattedN
+                                    pPhone = formattedP
+                                    pEmail = formattedE
+                                    pPhoto = formattedPhoto
+                                    pPass = pw
+                                    isAuth = true
+                                    Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
                                 isCheckingLogin = false
                             }
@@ -229,9 +260,23 @@ fun PassengerSuperApp() {
                 ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = false, drawerContent = {
                         ModalDrawerSheet {
                             Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.Start) {
-                                Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), IMPERIAL_BLUE)
+                                // 🔥 Real Google Avatar
+                                if (pPhoto.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = pPhoto,
+                                        contentDescription = "Profile Picture",
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.LightGray),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(Icons.Filled.AccountCircle, null, Modifier.size(64.dp), IMPERIAL_BLUE)
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
                                 Text(text = pName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                                Text(text = pPhone, fontSize = 14.sp, color = Color.Gray)
+                                Text(text = if (pPhone.isNotEmpty()) pPhone else pEmail, fontSize = 14.sp, color = Color.Gray)
                             }
                             Divider()
                             NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
@@ -307,9 +352,9 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
                                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                                        conn.doOutput = true
                                         conn.connectTimeout = 15000 
                                         conn.readTimeout = 15000
+                                        conn.doOutput = true
                                         val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
                                         val os = conn.outputStream
                                         os.write(body.toByteArray(Charsets.UTF_8))
@@ -348,7 +393,21 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
         } else {
             OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Enter Telegram Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
             Spacer(modifier = Modifier.height(16.dp))
-            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            
+            OutlinedTextField(
+                value = newPass, 
+                onValueChange = { newPass = it }, 
+                label = { Text("Enter New Password") }, 
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(), 
+                shape = RoundedCornerShape(12.dp)
+            )
+            
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = {
                 if (code.length >= 4 && newPass.length > 3) {
@@ -370,6 +429,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
             }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp)) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SECURE NEW PASSWORD", fontWeight = FontWeight.Bold)
             }
+
             Spacer(modifier = Modifier.height(12.dp))
             TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }) {
                 Text("Didn't get a code? Contact Support Team", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold)
@@ -381,49 +441,65 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
     }
 }
 
+// -----------------------------------------------------------
+// 🚨 OFFICIAL GOOGLE PLAY SERVICES BOTTOM SHEET (JIJI-STYLE - IMAGE 2)
+// -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, onForgotPassword: () -> Unit, onLogin: (String, String, String, String) -> Unit) {
+fun LoginView(
+    name: String, 
+    phone: String, 
+    email: String, 
+    isChecking: Boolean, 
+    onForgotPassword: () -> Unit, 
+    onLogin: (String, String, String, String, String) -> Unit // name, phone, email, photoUrl, password
+) {
     var n by remember { mutableStateOf(name) }
     var p by remember { mutableStateOf(phone) }
     var e by remember { mutableStateOf(email) }
+    var photoUrl by remember { mutableStateOf("") }
     var pw by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var loginStep by remember { mutableStateOf("CHOICE") } 
     val ctx = LocalContext.current
     
+    // 🔥 THIS CLIENT SUMMONS IMAGE 2 (AVATARS, NAMES, CLEAN GOOGLE SHEET)
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
+    val googleSignInClient = remember { GoogleSignIn.getClient(ctx, gso) }
+
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-            if (accountName != null) {
-                e = accountName
-                if (n.isEmpty()) {
-                    n = accountName.substringBefore("@").replace(Regex("[^A-Za-z]"), " ").replaceFirstChar { it.uppercase() }
-                }
-                pw = "google_secure_bypass"
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
+            if (account != null) {
+                e = account.email ?: ""
+                n = account.displayName ?: "Passenger"
+                photoUrl = account.photoUrl?.toString() ?: ""
+                pw = "google_verified"
                 loginStep = "GOOGLE_PHONE"
-                Toast.makeText(ctx, "Google Account Linked! Enter Phone Number to finish.", Toast.LENGTH_LONG).show()
             }
-        } else {
+        } catch (ex: ApiException) {
             loginStep = "CHOICE"
         }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp))
-        Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE)
+        Image(painterResource(R.drawable.logo_passenger), null, Modifier.size(160.dp)); 
+        Text("Bayra Travel", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IMPERIAL_BLUE); 
         Text("Welcome to Arba Minch", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 40.dp))
         
         when (loginStep) {
             "CHOICE" -> {
+                // 1. OFFICIAL GOOGLE BUTTON (OPENS IMAGE 2)
                 Button(
                     onClick = {
-                        try {
-                            val intent = AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), false, null, null, null, null)
-                            googleSignInLauncher.launch(intent)
-                        } catch (ex: Exception) {
-                            Toast.makeText(ctx, "Google Services unavailable. Use Manual Login.", Toast.LENGTH_SHORT).show()
-                            loginStep = "MANUAL"
+                        googleSignInClient.signOut().addOnCompleteListener {
+                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
@@ -437,6 +513,7 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                // 2. MANUAL LOGIN BUTTON
                 Button(
                     onClick = { loginStep = "MANUAL" },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A859)),
@@ -477,7 +554,11 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Button(onClick = { if(n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 3 && !isChecking) onLogin(n, p, e, pw) }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
+                Button(onClick = { 
+                    if(n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 3 && !isChecking) {
+                        onLogin(n, p, e, "", pw)
+                    } 
+                }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
                     if (isChecking) {
                         CircularProgressIndicator(color = Color.White)
                     } else {
@@ -490,14 +571,30 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
             }
             
             "GOOGLE_PHONE" -> {
-                Text("Google Account Linked!", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("Please enter your phone number to complete registration.", color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (photoUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = photoUrl,
+                            contentDescription = "Avatar",
+                            modifier = Modifier.size(72.dp).clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    Text("✓ Google Account Linked", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Welcome, $n", fontWeight = FontWeight.Medium, color = Color.DarkGray)
+                    Text("Please enter your phone number to complete setup.", color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                }
                 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
                 OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Button(onClick = { if(p.length > 8 && !isChecking) onLogin(n, p, e, pw) }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
+                Button(onClick = { 
+                    if(p.length > 8 && !isChecking) {
+                        onLogin(n, p, e, photoUrl, pw)
+                    } 
+                }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
                     if (isChecking) {
                         CircularProgressIndicator(color = Color.White)
                     } else {
@@ -512,6 +609,10 @@ fun LoginView(name: String, phone: String, email: String, isChecking: Boolean, o
     }
 }
 
+// -----------------------------------------------------------
+// BOOKING HUB, HISTORY, SETTINGS 
+// -----------------------------------------------------------
+
 @Composable
 fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferences, pickupPt: GeoPoint?, destPt: GeoPoint?, selectedTier: Tier, step: String, hrCount: Int, onPointChange: (GeoPoint?, GeoPoint?, String, Tier, Int) -> Unit) {
     val ctx = LocalContext.current; val scope = rememberCoroutineScope()
@@ -521,6 +622,7 @@ fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferen
     var isGeneratingLink by remember { mutableStateOf(false) }
     val greenHandLollipop = remember { createGreenHandLollipop(ctx) }
     val redLollipop = remember { createRedLollipop(ctx) }
+    
     var locationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
     LaunchedEffect(Unit) {
