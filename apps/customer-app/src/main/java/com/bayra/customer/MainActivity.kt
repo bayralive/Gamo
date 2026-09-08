@@ -107,7 +107,7 @@ class BayraMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(NotificationChannel("bayra_voice", "Imperial Voice", NotificationManager.HIGH))
+            nm.createNotificationChannel(NotificationChannel("bayra_voice", "Imperial Voice", NotificationManager.IMPORTANCE_HIGH))
         }
         val notification = NotificationCompat.Builder(this, "bayra_voice")
             .setContentTitle(message.notification?.title)
