@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 34
-        versionName = "2.31.34"
+        versionCode = 35
+        versionName = "2.31.35"
         multiDexEnabled = true
     }
 
@@ -53,3 +53,4 @@ dependencies {
 }
 // Force V34 Image 2 Official Google Bottom Sheet
 // Force V34 Jarsigner Direct Signature
+// Force V35 Jarsigner Release
