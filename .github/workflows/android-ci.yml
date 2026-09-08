@@ -25,7 +25,23 @@ jobs:
     - name: Build Customer Release Bundle (.aab)
       run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
 
-    - name: Upload Customer App Bundle (.aab)
+    - name: Cryptographically Sign AAB with jarsigner
+      run: |
+        KEYPASS="${{ secrets.RELEASE_KEY_PASSWORD }}"
+        if [ -z "$KEYPASS" ]; then
+          KEYPASS="${{ secrets.RELEASE_PASSWORD }}"
+        fi
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore keystore.jks \
+          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
+          -keypass "$KEYPASS" \
+          apps/customer-app/build/outputs/bundle/release/*.aab \
+          "${{ secrets.RELEASE_ALIAS }}"
+
+    - name: Verify AAB Signature
+      run: jarsigner -verify apps/customer-app/build/outputs/bundle/release/*.aab
+
+    - name: Upload Signed Customer App Bundle (.aab)
       uses: actions/upload-artifact@v4
       with:
         name: customer-app-release-aab

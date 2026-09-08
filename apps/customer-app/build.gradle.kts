@@ -48,9 +48,6 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx:23.2.1")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 
-    // 🔥 OFFICIAL GOOGLE PLAY AUTH (For Image 2 Bottom Sheet with Avatars)
+    // 🔥 OFFICIAL GOOGLE PLAY AUTH
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
-// Force V36 Real Google Bottom Sheet
-// Final Clean V37 Release
-// Force V37 Official Google Account Chooser
