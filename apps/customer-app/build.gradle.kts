@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 36
-        versionName = "2.31.36"
+        versionCode = 37
+        versionName = "2.31.37"
         multiDexEnabled = true
     }
 
@@ -52,3 +52,4 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
 // Force V36 Real Google Bottom Sheet
+// Final Clean V37 Release
