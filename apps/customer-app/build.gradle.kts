@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 37
-        versionName = "2.31.37"
+        versionCode = 38
+        versionName = "2.31.38"
         multiDexEnabled = true
     }
 
@@ -51,3 +51,4 @@ dependencies {
     // 🔥 OFFICIAL GOOGLE PLAY AUTH
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 }
+// Force V38 Snap To Map
