@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 39
-        versionName = "2.31.39"
+        versionCode = 40
+        versionName = "2.31.40"
         multiDexEnabled = true
     }
 
@@ -53,3 +53,4 @@ dependencies {
 }
 // Force V38 Snap To Map
 // Force V39 Android Permission Prompt Fix
+// Force V40 Google Account Sheet with Pure RTDB
