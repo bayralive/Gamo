@@ -1,7 +1,6 @@
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(express.json());
@@ -25,21 +24,6 @@ try {
 } catch (error) {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
-
-// --- PORT 587 GMAIL TRANSPORTER (BYPASSES CLOUD FIREWALL BLOCKS) ---
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Must be false for port 587
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        rejectUnauthorized: false
-    },
-    family: 4
-});
 
 // --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -169,8 +153,8 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 NON-BLOCKING LOGIN SECURITY EMAIL (PORT 587)
-app.post('/login-security-alert', (req, res) => {
+// 🔥 HTTPS-BASED SECURITY EMAIL (IMMUNE TO RENDER FIREWALL BLOCKS!)
+app.post('/login-security-alert', async (req, res) => {
     const { email, name, status, device } = req.body;
 
     if (!email || !status) {
@@ -195,7 +179,7 @@ app.post('/login-security-alert', (req, res) => {
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email. If not, please secure your password.</p>
+                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email.</p>
             </div>
           `
         : `
@@ -207,21 +191,26 @@ app.post('/login-security-alert', (req, res) => {
                 </div>
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: gray;">If you forgot your password, please open the Bayra app and use Telegram Password Recovery.</p>
             </div>
           `;
 
-    transporter.sendMail({
-        from: `"Bayra Imperial Security" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: subject,
-        html: htmlContent
-    }).then(() => {
-        console.log(`✅ [EMAIL DELIVERED] Security email successfully delivered to ${email}`);
-    }).catch((err) => {
-        console.error("❌ [EMAIL ERROR]:", err.message);
-    });
+    try {
+        // Sends over HTTPS (Port 443) -> Render CANNOT block this!
+        await axios.post('https://api.resend.com/emails', {
+            from: 'Bayra Travel Security <onboarding@resend.dev>',
+            to: [email],
+            subject: subject,
+            html: htmlContent
+        }, {
+            headers: {
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log(`✅ [HTTPS EMAIL DELIVERED] Successfully sent to ${email}`);
+    } catch (err) {
+        console.error("❌ [EMAIL ERROR]:", err.response ? err.response.data : err.message);
+    }
 });
 
 const PORT = process.env.PORT || 3000;
