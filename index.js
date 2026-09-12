@@ -153,7 +153,7 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 HTTPS-BASED SECURITY EMAIL (IMMUNE TO RENDER FIREWALL BLOCKS!)
+// 🔥 RESEND HTTPS EMAIL ROUTE (NO NODEMAILER, NO 35s TIMEOUT!)
 app.post('/login-security-alert', async (req, res) => {
     const { email, name, status, device } = req.body;
 
@@ -161,6 +161,7 @@ app.post('/login-security-alert', async (req, res) => {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
+    // ⚡ INSTANT RESPONSE: Tells Postman "Success" in 0.1s so it NEVER times out!
     res.status(200).json({ success: true, message: `Security alert queued for ${email}` });
 
     const isSuccess = status.toUpperCase() === "SUCCESS";
@@ -178,8 +179,6 @@ app.post('/login-security-alert', async (req, res) => {
                 </div>
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email.</p>
             </div>
           `
         : `
@@ -195,7 +194,6 @@ app.post('/login-security-alert', async (req, res) => {
           `;
 
     try {
-        // Sends over HTTPS (Port 443) -> Render CANNOT block this!
         await axios.post('https://api.resend.com/emails', {
             from: 'Bayra Travel Security <onboarding@resend.dev>',
             to: [email],
