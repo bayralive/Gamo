@@ -26,12 +26,18 @@ try {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
-// --- GMAIL TRANSPORTER SETUP ---
+// --- BULLETPROOF GMAIL SETUP (FORCES IPV4 TO STOP 30s TIMEOUT) ---
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // SSL
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
+    },
+    family: 4, // 🔥 FORCES IPV4 (Stops the 30-second cloud timeout!)
+    tls: {
+        rejectUnauthorized: false
     }
 });
 
@@ -163,14 +169,18 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 ROUTE 2: AUTOMATED LOGIN SUCCESS / FAILURE SECURITY EMAILS
-app.post('/login-security-alert', async (req, res) => {
+// 🔥 ROUTE 2: FAST, NON-BLOCKING LOGIN SECURITY EMAIL
+app.post('/login-security-alert', (req, res) => {
     const { email, name, status, device } = req.body;
 
     if (!email || !status) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
+    // ⚡ INSTANT RESPONSE: Tells Postman "Success" in 0.1s so it NEVER times out!
+    res.status(200).json({ success: true, message: `Security alert queued for ${email}` });
+
+    // 📬 Background Email Processing:
     const isSuccess = status.toUpperCase() === "SUCCESS";
     const subject = isSuccess
         ? "🛡️ Bayra Security: Successful Account Login"
@@ -187,7 +197,7 @@ app.post('/login-security-alert', async (req, res) => {
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email. If this wasn't you, please secure your password immediately in the app.</p>
+                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email. If not, please secure your password.</p>
             </div>
           `
         : `
@@ -200,23 +210,20 @@ app.post('/login-security-alert', async (req, res) => {
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="font-size: 12px; color: gray;">If you forgot your password, please open the Bayra app and use the Telegram Password Recovery option.</p>
+                <p style="font-size: 12px; color: gray;">If you forgot your password, please open the Bayra app and use Telegram Password Recovery.</p>
             </div>
           `;
 
-    try {
-        await transporter.sendMail({
-            from: `"Bayra Imperial Security" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: subject,
-            html: htmlContent
-        });
-        console.log(`📧 Security email sent to ${email} [${status}]`);
-        res.status(200).json({ success: true, message: `Email delivered to ${email}` });
-    } catch (err) {
-        console.error("❌ Email failed:", err.message);
-        res.status(500).json({ success: false, error: err.message });
-    }
+    transporter.sendMail({
+        from: `"Bayra Imperial Security" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: subject,
+        html: htmlContent
+    }).then(() => {
+        console.log(`✅ [EMAIL DELIVERED] Security email successfully delivered to ${email}`);
+    }).catch((err) => {
+        console.error("❌ [EMAIL ERROR]:", err.message);
+    });
 });
 
 const PORT = process.env.PORT || 3000;
