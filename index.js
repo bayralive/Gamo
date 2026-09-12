@@ -1,67 +1,58 @@
 const express = require('express');
 const admin = require('firebase-admin');
 const axios = require('axios');
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(express.json());
 
-// Record exactly when the server started to ignore "Ghost" old rides
 const SERVER_START_TIME = Date.now();
 
-// ==========================================
-// 1. FIREBASE ADMIN INITIALIZATION
-// ==========================================
+// --- FIREBASE INITIALIZATION ---
 let db;
-
 try {
     if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
         throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing!");
     }
-
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
     });
-    
     db = admin.database();
     console.log("✅ Firebase Admin Connected.");
-
     activateImperialWatchman();
-
 } catch (error) {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
-// ==========================================
-// 2. LOGISTICS & THE IMPERIAL VOICE
-// ==========================================
+// --- GMAIL TRANSPORTER SETUP ---
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
 
-// Haversine Distance Function: Calculates KM between two GPS points
+// --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Radius of earth in KM
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 function activateImperialWatchman() {
-    console.log("🛡️ Imperial Watchman is now on High-Speed Smart Dispatch patrol...");
-
-    // 🚨 SMART DISPATCH: Listen for NEW ride requests
+    console.log("🛡️ Imperial Watchman is on Smart Dispatch patrol...");
     db.ref('rides').on('child_added', async (snapshot) => {
         const ride = snapshot.val();
-        
         if (ride && ride.status === "REQUESTED" && ride.time > (SERVER_START_TIME - 10000)) {
-            
             const driversSnap = await db.ref('drivers').once('value');
-            let closestDriver = null;
-            let minDistance = 9999;
+            let closestDriver = null; let minDistance = 9999;
 
             driversSnap.forEach((child) => {
                 const driver = child.val();
@@ -75,32 +66,19 @@ function activateImperialWatchman() {
             });
 
             if (closestDriver) {
-                console.log(`🎯 [Dispatch] Closest driver: ${closestDriver.name}. Reserving for 25s.`);
-                
-                // 🔥 UPDATED: 25-Second Reservation
-                const reservedUntil = Date.now() + 25000;
                 await snapshot.ref.update({
                     reservedFor: closestDriver.name,
-                    reservedUntil: reservedUntil
+                    reservedUntil: Date.now() + 25000
                 });
-
-                // Notify ONLY the closest driver first (25s countdown in text)
                 sendPush(closestDriver.token, "🎯 Exclusive Dispatch!", `Closest driver (${minDistance.toFixed(1)}km)! 25s to accept.`);
-
-                // 🔥 UPDATED: 25-Second Fallback Timer
                 setTimeout(async () => {
-                    const currentRideSnap = await snapshot.ref.once('value');
-                    const currentRide = currentRideSnap.val();
-                    
+                    const currentRide = (await snapshot.ref.once('value')).val();
                     if (currentRide && currentRide.status === "REQUESTED" && currentRide.reservedFor === closestDriver.name) {
-                        console.log(`🔓 [Dispatch] 25s expired. Opening to all guards.`);
                         await snapshot.ref.update({ reservedFor: null });
                         broadcastToDrivers("🚨 New Dispatch!", `New ${currentRide.tier} available for all drivers!`);
                     }
                 }, 25000);
-
             } else {
-                console.log("[Dispatch] No nearby drivers. Global broadcast.");
                 broadcastToDrivers("🚨 New Dispatch!", `A new ${ride.tier} request is waiting.`);
             }
         }
@@ -108,48 +86,10 @@ function activateImperialWatchman() {
 
     db.ref('rides').on('child_changed', async (snapshot) => {
         const ride = snapshot.val();
-        const status = ride.status;
-
-        if (status === "ACCEPTED") {
-            sendToUser(ride.pName, "Driver Found! 🚕", `${ride.driverName} is on the way.`);
-        } else if (status === "ARRIVED") {
-            sendToUser(ride.pName, "Driver Arrived! 🏁", "Your driver is waiting outside.");
-        } 
-        else if (status === "CANCELLED_BY_DRIVER") {
-            await auditDriverConduct(ride.driverName, snapshot.key);
-            sendToUser(ride.pName, "Ride Cancelled ⚠️", "Your driver had an issue. Please request again.");
-        } 
-        else if (status === "CANCELLED_BY_PASSENGER") {
-            sendToUser(ride.driverName, "Passenger Cancelled 🛑", "The passenger has cancelled the request.");
-        }
+        if (!ride) return;
+        if (ride.status === "ACCEPTED") sendToUser(ride.pName, "Driver Found! 🚕", `${ride.driverName} is on the way.`);
+        else if (ride.status === "ARRIVED") sendToUser(ride.pName, "Driver Arrived! 🏁", "Your driver is waiting outside.");
     });
-
-    setInterval(async () => {
-        const now = Date.now();
-        const timeoutLimit = 5 * 60 * 1000; 
-        try {
-            const ridesSnap = await db.ref('rides').once('value');
-            ridesSnap.forEach((child) => {
-                const ride = child.val();
-                if (ride.status === "REQUESTED" && ride.time && (now - ride.time) > timeoutLimit) {
-                    child.ref.remove();
-                }
-            });
-        } catch (e) {}
-    }, 60000);
-}
-
-async function auditDriverConduct(driverName, rideId) {
-    try {
-        const driverRef = db.ref(`drivers/${driverName}`);
-        const strikesRef = driverRef.child('strikes');
-        await strikesRef.transaction((current) => (current || 0) + 1);
-        const snap = await strikesRef.once('value');
-        if (snap.val() >= 3) {
-            const banUntil = Date.now() + (24 * 60 * 60 * 1000);
-            await driverRef.update({ isBanned: true, banUntil: banUntil, strikes: 0 });
-        }
-    } catch (e) {}
 }
 
 async function sendToUser(userName, title, body) {
@@ -164,8 +104,7 @@ async function broadcastToDrivers(title, body) {
     try {
         const driversSnap = await db.ref('drivers').once('value');
         driversSnap.forEach((child) => {
-            const driver = child.val();
-            if (driver.fcmToken) sendPush(driver.fcmToken, title, body);
+            if (child.val().fcmToken) sendPush(child.val().fcmToken, title, body);
         });
     } catch (e) {}
 }
@@ -175,18 +114,12 @@ async function sendPush(token, title, body) {
         await admin.messaging().send({
             notification: { title, body },
             token: token,
-            android: {
-                priority: "high",
-                notification: { sound: "default", channelId: "bayra_alerts" }
-            }
+            android: { priority: "high", notification: { sound: "default", channelId: "bayra_alerts" } }
         });
     } catch (e) {}
 }
 
-// ==========================================
-// 3. SECURE CHAPA GATEWAY (THE STEEL VAULT)
-// ==========================================
-
+// --- CHAPA PAYMENT ROUTES ---
 const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
 const CHAPA_AUTH = { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } };
 
@@ -195,14 +128,12 @@ app.post('/initialize-payment', async (req, res) => {
     const tx_ref = `TX-${rideId}-${Date.now()}`;
     try {
         const response = await axios.post(CHAPA_URL, {
-            amount: amount, currency: "ETB", email: email, first_name: name, tx_ref: tx_ref,
+            amount, currency: "ETB", email, first_name: name, tx_ref,
             callback_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}`,
             return_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}`
         }, CHAPA_AUTH);
         res.json({ status: "success", data: { checkout_url: response.data.data.checkout_url } });
-    } catch (e) {
-        res.status(500).json({ status: "failed" });
-    }
+    } catch (e) { res.status(500).json({ status: "failed" }); }
 });
 
 app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
@@ -211,22 +142,82 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
         const check = await axios.get(`https://api.chapa.co/v1/transaction/verify/${txRef}`, CHAPA_AUTH);
         if (check.data.status === "success" || check.data.data.status === "success") {
             await db.ref(`rides/${rideId}`).update({ status: "PAID_CHAPA", verifiedByBackend: true });
-            const rideSnap = await db.ref(`rides/${rideId}`).once('value');
-            const ride = rideSnap.val();
-            if (ride) sendToUser(ride.pName, "Payment Verified ✅", "The Treasury has confirmed your payment.");
-            res.send("<h1 style='text-align:center; margin-top:20%; color:green;'>✅ Payment Confirmed! Return to app.</h1>");
+            res.send("<h1 style='text-align:center; margin-top:20%; color:green;'>✅ Payment Confirmed!</h1>");
         } else {
             res.send("<h1 style='text-align:center; margin-top:20%; color:red;'>🛑 Payment Not Verified.</h1>");
         }
-    } catch (error) {
-        res.status(500).send("<h1>Verification error.</h1>");
+    } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
+});
+
+// 🔥 ROUTE 1: IN-APP POPUP ROUTE
+app.post('/send-popup', async (req, res) => {
+    const { title, text, imageUrl, popupId } = req.body;
+    if (!title || !imageUrl || !popupId) {
+        return res.status(400).json({ success: false, error: "Missing title, imageUrl, or popupId" });
+    }
+    try {
+        await db.ref('app_config/active_popup').set({
+            id: popupId, title, text, imageUrl, timestamp: Date.now()
+        });
+        res.status(200).json({ success: true, message: "Pop-up is now live in the app!" });
+    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
+});
+
+// 🔥 ROUTE 2: AUTOMATED LOGIN SUCCESS / FAILURE SECURITY EMAILS
+app.post('/login-security-alert', async (req, res) => {
+    const { email, name, status, device } = req.body;
+
+    if (!email || !status) {
+        return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    const isSuccess = status.toUpperCase() === "SUCCESS";
+    const subject = isSuccess
+        ? "🛡️ Bayra Security: Successful Account Login"
+        : "⚠️ Bayra Security Alert: Failed Login Attempt";
+
+    const htmlContent = isSuccess
+        ? `
+            <div style="font-family: Arial, sans-serif; padding: 25px; border: 1px solid #e0e0e0; border-radius: 12px; max-width: 500px; margin: auto;">
+                <h2 style="color: #1a237e; margin-top: 0;">Bayra Travel Security</h2>
+                <p>Hello <strong>${name || 'Passenger'}</strong>,</p>
+                <div style="background-color: #e8f5e9; color: #2e7d32; padding: 12px; border-radius: 8px; font-weight: bold;">
+                    ✅ Successful login detected on your account.
+                </div>
+                <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
+                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email. If this wasn't you, please secure your password immediately in the app.</p>
+            </div>
+          `
+        : `
+            <div style="font-family: Arial, sans-serif; padding: 25px; border: 1px solid #ffcdd2; border-radius: 12px; max-width: 500px; margin: auto;">
+                <h2 style="color: #d50000; margin-top: 0;">⚠️ Security Warning</h2>
+                <p>Hello <strong>${name || 'Passenger'}</strong>,</p>
+                <div style="background-color: #ffebee; color: #c62828; padding: 12px; border-radius: 8px; font-weight: bold;">
+                    🛑 An incorrect password attempt was just blocked.
+                </div>
+                <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
+                <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: gray;">If you forgot your password, please open the Bayra app and use the Telegram Password Recovery option.</p>
+            </div>
+          `;
+
+    try {
+        await transporter.sendMail({
+            from: `"Bayra Imperial Security" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: subject,
+            html: htmlContent
+        });
+        console.log(`📧 Security email sent to ${email} [${status}]`);
+        res.status(200).json({ success: true, message: `Email delivered to ${email}` });
+    } catch (err) {
+        console.error("❌ Email failed:", err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// ==========================================
-// 4. START THE SERVER
-// ==========================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Bayra Imperial Core is ONLINE on port ${PORT}`);
-});
+app.listen(PORT, () => { console.log(`Bayra Imperial Core is ONLINE on port ${PORT}`); });

@@ -121,6 +121,31 @@ class BayraMessagingService : FirebaseMessagingService() {
     }
 }
 
+fun sendSecurityEmailTrigger(email: String, name: String, status: String) {
+    if (email.contains("@") && !email.contains("example.com")) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = URL("https://bayra-backend-eu.onrender.com/login-security-alert")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    doOutput = true
+                    connectTimeout = 8000
+                }
+                val body = JSONObject().apply {
+                    put("email", email)
+                    put("name", name)
+                    put("status", status)
+                    put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+                }
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                conn.responseCode
+            } catch (e: Exception) {}
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PassengerSuperApp() {
@@ -219,29 +244,36 @@ fun PassengerSuperApp() {
                         val formattedPhoto = photo
 
                         if (formattedP == "N/A") return@LoginView
-
                         isCheckingLogin = true
 
                         FirebaseDatabase.getInstance(DB_URL).getReference("users/$formattedP").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.exists()) {
                                     val storedPw = s.child("password").value?.toString() ?: ""
+                                    val existingEmail = s.child("email").value?.toString() ?: formattedE
+                                    val existingName = s.child("name").value?.toString() ?: formattedN
+
                                     if (storedPw == pw || pw == "google_verified") {
                                         val existingPhoto = s.child("photoUrl").value?.toString() ?: formattedPhoto
                                         prefs.edit().clear().apply()
-                                        prefs.edit().putString("n", s.child("name").value?.toString() ?: formattedN)
+                                        prefs.edit().putString("n", existingName)
                                             .putString("p", formattedP)
-                                            .putString("e", s.child("email").value?.toString() ?: formattedE)
+                                            .putString("e", existingEmail)
                                             .putString("photo", existingPhoto)
                                             .putString("pw", pw)
                                             .putBoolean("auth", true).apply()
-                                        pName = s.child("name").value?.toString() ?: formattedN
+                                        pName = existingName
                                         pPhone = formattedP
-                                        pEmail = s.child("email").value?.toString() ?: formattedE
+                                        pEmail = existingEmail
                                         pPhoto = existingPhoto
                                         pPass = pw
                                         isAuth = true
+
+                                        // 🔥 TRIGGER SUCCESS EMAIL
+                                        sendSecurityEmailTrigger(existingEmail, existingName, "SUCCESS")
                                     } else {
+                                        // 🛑 TRIGGER FAILED PASSWORD EMAIL
+                                        sendSecurityEmailTrigger(existingEmail, existingName, "FAILED")
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
                                 } else {
@@ -268,6 +300,9 @@ fun PassengerSuperApp() {
                                     pPhoto = formattedPhoto
                                     pPass = pw
                                     isAuth = true
+
+                                    // 🔥 TRIGGER REGISTRATION SUCCESS EMAIL
+                                    sendSecurityEmailTrigger(formattedE, formattedN, "SUCCESS")
                                     Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
                                 isCheckingLogin = false
@@ -287,10 +322,7 @@ fun PassengerSuperApp() {
                                     AsyncImage(
                                         model = pPhoto,
                                         contentDescription = "Profile Picture",
-                                        modifier = Modifier
-                                            .size(64.dp)
-                                            .clip(CircleShape)
-                                            .background(Color.LightGray),
+                                        modifier = Modifier.size(64.dp).clip(CircleShape).background(Color.LightGray),
                                         contentScale = ContentScale.Crop
                                     )
                                 } else {
@@ -335,7 +367,7 @@ fun PassengerSuperApp() {
                 }
             }
 
-            // 🔥 BULLETPROOF MATERIAL 3 ALERT DIALOG
+            // 🔥 OFFICIAL GOOGLE MATERIAL 3 ALERT DIALOG
             if (showPopup && popupData != null) {
                 AlertDialog(
                     onDismissRequest = {
@@ -358,10 +390,7 @@ fun PassengerSuperApp() {
                                 AsyncImage(
                                     model = imgUrl,
                                     contentDescription = "Promo Image",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
+                                    modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)),
                                     contentScale = ContentScale.Crop
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
