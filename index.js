@@ -153,7 +153,7 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 RESEND HTTPS EMAIL ROUTE (NO NODEMAILER, NO 35s TIMEOUT!)
+// 🔥 100% FREE BREVO EMAIL API (NO DOMAIN NEEDED, SENDS TO ANYONE!)
 app.post('/login-security-alert', async (req, res) => {
     const { email, name, status, device } = req.body;
 
@@ -161,7 +161,6 @@ app.post('/login-security-alert', async (req, res) => {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
-    // ⚡ INSTANT RESPONSE: Tells Postman "Success" in 0.1s so it NEVER times out!
     res.status(200).json({ success: true, message: `Security alert queued for ${email}` });
 
     const isSuccess = status.toUpperCase() === "SUCCESS";
@@ -179,6 +178,8 @@ app.post('/login-security-alert', async (req, res) => {
                 </div>
                 <p style="margin-top: 20px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
                 <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 12px; color: gray;">If this was you, you can safely ignore this email.</p>
             </div>
           `
         : `
@@ -194,20 +195,20 @@ app.post('/login-security-alert', async (req, res) => {
           `;
 
     try {
-        await axios.post('https://api.resend.com/emails', {
-            from: 'Bayra Travel Security <onboarding@resend.dev>',
-            to: [email],
+        await axios.post('https://api.brevo.com/v3/smtp/email', {
+            sender: { name: "Bayra Travel Security", email: "bayratraveldonotreplay@gmail.com" },
+            to: [{ email: email, name: name || "Passenger" }],
             subject: subject,
-            html: htmlContent
+            htmlContent: htmlContent
         }, {
             headers: {
-                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'api-key': process.env.BREVO_API_KEY,
                 'Content-Type': 'application/json'
             }
         });
-        console.log(`✅ [HTTPS EMAIL DELIVERED] Successfully sent to ${email}`);
+        console.log(`✅ [BREVO DELIVERED] Successfully delivered to ${email} for $0!`);
     } catch (err) {
-        console.error("❌ [EMAIL ERROR]:", err.response ? err.response.data : err.message);
+        console.error("❌ [BREVO ERROR]:", err.response ? err.response.data : err.message);
     }
 });
 
