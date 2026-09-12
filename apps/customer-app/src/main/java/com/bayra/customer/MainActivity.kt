@@ -149,6 +149,28 @@ fun PassengerSuperApp() {
     val scope = rememberCoroutineScope()
     var currentView by rememberSaveable { mutableStateOf("MAP") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
+
+    // 🔥 POP-UP LISTENER
+    var popupData by remember { mutableStateOf<DataSnapshot?>(null) }
+    var showPopup by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        FirebaseDatabase.getInstance(DB_URL).getReference("app_config/active_popup")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    if (s.exists()) {
+                        val popupId = s.child("id").value?.toString() ?: ""
+                        if (!prefs.getBoolean("dismissed_popup_$popupId", false)) {
+                            popupData = s
+                            showPopup = true
+                        }
+                    } else {
+                        showPopup = false
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+    }
     
     BackHandler {
         if (isAuth) {
@@ -218,6 +240,24 @@ fun PassengerSuperApp() {
                                         pPhoto = existingPhoto
                                         pPass = pw
                                         isAuth = true
+
+                                        // 🔥 TRIGGER SECURITY EMAIL
+                                        scope.launch(Dispatchers.IO) {
+                                            try {
+                                                val url = URL("https://bayra-backend-eu.onrender.com/send-security-email")
+                                                val conn = url.openConnection() as HttpURLConnection
+                                                conn.requestMethod = "POST"
+                                                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                                conn.doOutput = true
+                                                val body = JSONObject().put("email", pEmail).put("name", pName).put("device", Build.MODEL).toString()
+                                                val os = conn.outputStream
+                                                os.write(body.toByteArray(Charsets.UTF_8))
+                                                os.flush()
+                                                os.close()
+                                                conn.responseCode
+                                            } catch (e: Exception) {}
+                                        }
+
                                     } else {
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
@@ -245,6 +285,24 @@ fun PassengerSuperApp() {
                                     pPhoto = formattedPhoto
                                     pPass = pw
                                     isAuth = true
+
+                                    // 🔥 TRIGGER SECURITY EMAIL
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            val url = URL("https://bayra-backend-eu.onrender.com/send-security-email")
+                                            val conn = url.openConnection() as HttpURLConnection
+                                            conn.requestMethod = "POST"
+                                            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                            conn.doOutput = true
+                                            val body = JSONObject().put("email", pEmail).put("name", pName).put("device", Build.MODEL).toString()
+                                            val os = conn.outputStream
+                                            os.write(body.toByteArray(Charsets.UTF_8))
+                                            os.flush()
+                                            os.close()
+                                            conn.responseCode
+                                        } catch (e: Exception) {}
+                                    }
+
                                     Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
                                 isCheckingLogin = false
@@ -260,7 +318,6 @@ fun PassengerSuperApp() {
                 ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = false, drawerContent = {
                         ModalDrawerSheet {
                             Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.Start) {
-                                // 🔥 Real Google Avatar
                                 if (pPhoto.isNotEmpty()) {
                                     AsyncImage(
                                         model = pPhoto,
@@ -307,6 +364,55 @@ fun PassengerSuperApp() {
                                 "NOTIFICATIONS" -> NotificationPage()
                                 "SETTINGS" -> SettingsPage(isDarkMode = isDarkMode) { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }
                                 "ABOUT" -> AboutUsPage()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 🔥 IN-APP POPUP DIALOG
+            if (showPopup && popupData != null) {
+                androidx.compose.ui.window.Dialog(onDismissRequest = { }) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(contentAlignment = Alignment.TopEnd) {
+                                AsyncImage(
+                                    model = popupData?.child("imageUrl")?.value?.toString() ?: "",
+                                    contentDescription = "Promo Image",
+                                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                                    contentScale = ContentScale.Crop
+                                )
+                                IconButton(
+                                    onClick = {
+                                        val pid = popupData?.child("id")?.value?.toString() ?: ""
+                                        prefs.edit().putBoolean("dismissed_popup_$pid", true).apply()
+                                        showPopup = false
+                                    },
+                                    modifier = Modifier.padding(8.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape).size(32.dp)
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                                }
+                            }
+                            
+                            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = popupData?.child("title")?.value?.toString() ?: "",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 20.sp,
+                                    color = IMPERIAL_BLUE,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = popupData?.child("text")?.value?.toString() ?: "",
+                                    fontSize = 14.sp,
+                                    color = Color.DarkGray,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }
@@ -441,9 +547,6 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
     }
 }
 
-// -----------------------------------------------------------
-// 🚨 OFFICIAL GOOGLE PLAY SERVICES BOTTOM SHEET (JIJI-STYLE - IMAGE 2)
-// -----------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginView(
@@ -452,7 +555,7 @@ fun LoginView(
     email: String, 
     isChecking: Boolean, 
     onForgotPassword: () -> Unit, 
-    onLogin: (String, String, String, String, String) -> Unit // name, phone, email, photoUrl, password
+    onLogin: (String, String, String, String, String) -> Unit 
 ) {
     var n by remember { mutableStateOf(name) }
     var p by remember { mutableStateOf(phone) }
@@ -463,7 +566,6 @@ fun LoginView(
     var loginStep by remember { mutableStateOf("CHOICE") } 
     val ctx = LocalContext.current
     
-    // 🔥 THIS CLIENT SUMMONS IMAGE 2 (AVATARS, NAMES, CLEAN GOOGLE SHEET)
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
@@ -495,7 +597,6 @@ fun LoginView(
         
         when (loginStep) {
             "CHOICE" -> {
-                // 1. OFFICIAL GOOGLE BUTTON (OPENS IMAGE 2)
                 Button(
                     onClick = {
                         googleSignInClient.signOut().addOnCompleteListener {
@@ -513,7 +614,6 @@ fun LoginView(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // 2. MANUAL LOGIN BUTTON
                 Button(
                     onClick = { loginStep = "MANUAL" },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A859)),
@@ -608,10 +708,6 @@ fun LoginView(
         }
     }
 }
-
-// -----------------------------------------------------------
-// BOOKING HUB, HISTORY, SETTINGS 
-// -----------------------------------------------------------
 
 @Composable
 fun BookingHub(name: String, email: String, phone: String, prefs: SharedPreferences, pickupPt: GeoPoint?, destPt: GeoPoint?, selectedTier: Tier, step: String, hrCount: Int, onPointChange: (GeoPoint?, GeoPoint?, String, Tier, Int) -> Unit) {
