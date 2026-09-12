@@ -26,19 +26,19 @@ try {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
-// --- BULLETPROOF GMAIL SETUP (FORCES IPV4 TO STOP 30s TIMEOUT) ---
+// --- PORT 587 GMAIL TRANSPORTER (BYPASSES CLOUD FIREWALL BLOCKS) ---
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // SSL
+    port: 587,
+    secure: false, // Must be false for port 587
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
-    family: 4, // 🔥 FORCES IPV4 (Stops the 30-second cloud timeout!)
     tls: {
         rejectUnauthorized: false
-    }
+    },
+    family: 4
 });
 
 // --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
@@ -155,7 +155,7 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
     } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
 });
 
-// 🔥 ROUTE 1: IN-APP POPUP ROUTE
+// 🔥 IN-APP POPUP ROUTE
 app.post('/send-popup', async (req, res) => {
     const { title, text, imageUrl, popupId } = req.body;
     if (!title || !imageUrl || !popupId) {
@@ -169,7 +169,7 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 ROUTE 2: FAST, NON-BLOCKING LOGIN SECURITY EMAIL
+// 🔥 NON-BLOCKING LOGIN SECURITY EMAIL (PORT 587)
 app.post('/login-security-alert', (req, res) => {
     const { email, name, status, device } = req.body;
 
@@ -177,10 +177,8 @@ app.post('/login-security-alert', (req, res) => {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
-    // ⚡ INSTANT RESPONSE: Tells Postman "Success" in 0.1s so it NEVER times out!
     res.status(200).json({ success: true, message: `Security alert queued for ${email}` });
 
-    // 📬 Background Email Processing:
     const isSuccess = status.toUpperCase() === "SUCCESS";
     const subject = isSuccess
         ? "🛡️ Bayra Security: Successful Account Login"
