@@ -150,7 +150,7 @@ fun PassengerSuperApp() {
     var currentView by rememberSaveable { mutableStateOf("MAP") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
-    // 🔥 POP-UP LISTENER
+    // 🔥 POP-UP STATE & LISTENER
     var popupData by remember { mutableStateOf<DataSnapshot?>(null) }
     var showPopup by remember { mutableStateOf(false) }
 
@@ -163,6 +163,7 @@ fun PassengerSuperApp() {
                         if (!prefs.getBoolean("dismissed_popup_$popupId", false)) {
                             popupData = s
                             showPopup = true
+                            Toast.makeText(ctx, "📣 Pop-up Alert: ${s.child("title").value}", Toast.LENGTH_LONG).show()
                         }
                     } else {
                         showPopup = false
@@ -240,24 +241,6 @@ fun PassengerSuperApp() {
                                         pPhoto = existingPhoto
                                         pPass = pw
                                         isAuth = true
-
-                                        // 🔥 TRIGGER SECURITY EMAIL
-                                        scope.launch(Dispatchers.IO) {
-                                            try {
-                                                val url = URL("https://bayra-backend-eu.onrender.com/send-security-email")
-                                                val conn = url.openConnection() as HttpURLConnection
-                                                conn.requestMethod = "POST"
-                                                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                                                conn.doOutput = true
-                                                val body = JSONObject().put("email", pEmail).put("name", pName).put("device", Build.MODEL).toString()
-                                                val os = conn.outputStream
-                                                os.write(body.toByteArray(Charsets.UTF_8))
-                                                os.flush()
-                                                os.close()
-                                                conn.responseCode
-                                            } catch (e: Exception) {}
-                                        }
-
                                     } else {
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
@@ -285,24 +268,6 @@ fun PassengerSuperApp() {
                                     pPhoto = formattedPhoto
                                     pPass = pw
                                     isAuth = true
-
-                                    // 🔥 TRIGGER SECURITY EMAIL
-                                    scope.launch(Dispatchers.IO) {
-                                        try {
-                                            val url = URL("https://bayra-backend-eu.onrender.com/send-security-email")
-                                            val conn = url.openConnection() as HttpURLConnection
-                                            conn.requestMethod = "POST"
-                                            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                                            conn.doOutput = true
-                                            val body = JSONObject().put("email", pEmail).put("name", pName).put("device", Build.MODEL).toString()
-                                            val os = conn.outputStream
-                                            os.write(body.toByteArray(Charsets.UTF_8))
-                                            os.flush()
-                                            os.close()
-                                            conn.responseCode
-                                        } catch (e: Exception) {}
-                                    }
-
                                     Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
                                 isCheckingLogin = false
@@ -370,53 +335,58 @@ fun PassengerSuperApp() {
                 }
             }
 
-            // 🔥 IN-APP POPUP DIALOG
+            // 🔥 BULLETPROOF MATERIAL 3 ALERT DIALOG
             if (showPopup && popupData != null) {
-                androidx.compose.ui.window.Dialog(onDismissRequest = { }) {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
-                    ) {
+                AlertDialog(
+                    onDismissRequest = {
+                        val pid = popupData?.child("id")?.value?.toString() ?: ""
+                        prefs.edit().putBoolean("dismissed_popup_$pid", true).apply()
+                        showPopup = false
+                    },
+                    title = {
+                        Text(
+                            text = popupData?.child("title")?.value?.toString() ?: "Announcement",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 20.sp,
+                            color = IMPERIAL_BLUE
+                        )
+                    },
+                    text = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(contentAlignment = Alignment.TopEnd) {
+                            val imgUrl = popupData?.child("imageUrl")?.value?.toString() ?: ""
+                            if (imgUrl.isNotEmpty()) {
                                 AsyncImage(
-                                    model = popupData?.child("imageUrl")?.value?.toString() ?: "",
+                                    model = imgUrl,
                                     contentDescription = "Promo Image",
-                                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(12.dp)),
                                     contentScale = ContentScale.Crop
                                 )
-                                IconButton(
-                                    onClick = {
-                                        val pid = popupData?.child("id")?.value?.toString() ?: ""
-                                        prefs.edit().putBoolean("dismissed_popup_$pid", true).apply()
-                                        showPopup = false
-                                    },
-                                    modifier = Modifier.padding(8.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape).size(32.dp)
-                                ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
-                                }
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
-                            
-                            Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = popupData?.child("title")?.value?.toString() ?: "",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 20.sp,
-                                    color = IMPERIAL_BLUE,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = popupData?.child("text")?.value?.toString() ?: "",
-                                    fontSize = 14.sp,
-                                    color = Color.DarkGray,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                            Text(
+                                text = popupData?.child("text")?.value?.toString() ?: "",
+                                fontSize = 14.sp,
+                                color = Color.DarkGray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val pid = popupData?.child("id")?.value?.toString() ?: ""
+                                prefs.edit().putBoolean("dismissed_popup_$pid", true).apply()
+                                showPopup = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)
+                        ) {
+                            Text("CLOSE", fontWeight = FontWeight.Bold)
                         }
                     }
-                }
+                )
             }
         }
     }
