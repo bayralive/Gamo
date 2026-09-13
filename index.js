@@ -7,7 +7,6 @@ app.use(express.json());
 
 const SERVER_START_TIME = Date.now();
 
-// --- FIREBASE INITIALIZATION ---
 let db;
 try {
     if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
@@ -25,7 +24,6 @@ try {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
-// --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -109,7 +107,6 @@ async function sendPush(token, title, body) {
     } catch (e) {}
 }
 
-// --- CHAPA PAYMENT ROUTES ---
 const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
 const CHAPA_AUTH = { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } };
 
@@ -139,7 +136,6 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
     } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
 });
 
-// 🔥 IN-APP POPUP ROUTE
 app.post('/send-popup', async (req, res) => {
     const { title, text, imageUrl, popupId } = req.body;
     if (!title || !imageUrl || !popupId) {
@@ -153,7 +149,7 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 100% FREE BREVO EMAIL API (NO DOMAIN NEEDED, SENDS TO ANYONE!)
+// 🔥 100% FREE BREVO API: DELIVERS TO ANY PASSENGER (NO DOMAIN NEEDED!)
 app.post('/login-security-alert', async (req, res) => {
     const { email, name, status, device } = req.body;
 
@@ -206,7 +202,7 @@ app.post('/login-security-alert', async (req, res) => {
                 'Content-Type': 'application/json'
             }
         });
-        console.log(`✅ [BREVO DELIVERED] Successfully delivered to ${email} for $0!`);
+        console.log(`✅ [BREVO EMAIL DELIVERED] Successfully delivered to ${email} for $0!`);
     } catch (err) {
         console.error("❌ [BREVO ERROR]:", err.response ? err.response.data : err.message);
     }
