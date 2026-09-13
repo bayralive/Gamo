@@ -153,7 +153,36 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 ENHANCED PROMOTIONAL EMAIL & ADMIN GROWTH MONITOR
+// 🌐 DEEP LINK WEB BRIDGE (OPENS APP TO IMAGE 1 DIRECTLY)
+app.get('/reset-password', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Bayra Travel Security Bridge</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
+                .card { max-width: 420px; margin: auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+                .btn { display: block; background: #1A237E; color: white; padding: 14px; text-decoration: none; border-radius: 10px; font-weight: bold; margin-top: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h2>🔒 Bayra Account Recovery</h2>
+                <p style="color: #64748b;">Redirecting you securely to the Bayra Travel app...</p>
+                <a href="bayra://recover" class="btn">OPEN BAYRA TRAVEL APP</a>
+                <p style="margin-top: 20px; font-size: 12px; color: gray;">If the app does not open automatically, tap the button above.</p>
+            </div>
+            <script>
+                window.location.href = "bayra://recover";
+            </script>
+        </body>
+        </html>
+    `);
+});
+
+// 🔥 PROMOTIONAL EMAIL & ADMIN GROWTH MONITOR
 app.post('/login-security-alert', async (req, res) => {
     const { email, name, status, device } = req.body;
 
@@ -167,6 +196,8 @@ app.post('/login-security-alert', async (req, res) => {
     const subject = isSuccess
         ? "🛡️ Welcome to Bayra Travel – Login Confirmed"
         : "⚠️ Urgent Security Alert: Failed Password Attempt on Bayra Travel";
+
+    const resetLink = "https://bayra-backend-eu.onrender.com/reset-password";
 
     const htmlContent = isSuccess
         ? `
@@ -186,7 +217,7 @@ app.post('/login-security-alert', async (req, res) => {
                     <p style="margin: 2px 0; color: #64748b; font-size: 13px;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 </div>
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="https://t.me/bayratravelchat" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: inline-block;">
+                    <a href="${resetLink}" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: bold; display: inline-block; box-shadow: 0 4px 10px rgba(213,0,0,0.3);">
                         🔒 Change Password / Secure Account
                     </a>
                 </div>
@@ -205,8 +236,8 @@ app.post('/login-security-alert', async (req, res) => {
                 <h2 style="color: #c53030; margin-top: 0;">Attention ${name || 'Passenger'},</h2>
                 <p style="color: #4a5568;">An incorrect password was just entered for your Bayra Travel account.</p>
                 <div style="text-align: center; margin: 25px 0;">
-                    <a href="https://t.me/bayratravelchat" style="background-color: #1A237E; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: inline-block;">
-                        Reset Password via Telegram
+                    <a href="${resetLink}" style="background-color: #1A237E; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: bold; display: inline-block;">
+                        Reset Password in App
                     </a>
                 </div>
             </div>
@@ -226,7 +257,7 @@ app.post('/login-security-alert', async (req, res) => {
                 'Content-Type': 'application/json'
             }
         });
-        console.log(`✅ [PROMO EMAIL & ADMIN TRACKER DELIVERED] Sent to ${email} + Copied to Admin!`);
+        console.log(`✅ [PROMO EMAIL DELIVERED WITH DEEP LINK] Sent to ${email}!`);
     } catch (err) {
         console.error("❌ [BREVO ERROR]:", err.response ? err.response.data : err.message);
     }

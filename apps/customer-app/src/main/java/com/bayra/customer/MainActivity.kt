@@ -102,7 +102,13 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION, 
             Manifest.permission.POST_NOTIFICATIONS
         ))
-        setContent { PassengerSuperApp() }
+        
+        // 🚀 DETECT DEEP LINK FROM EMAIL
+        val isDeepLinkRecovery = intent?.data?.let { uri ->
+            uri.path?.contains("reset-password") == true || uri.scheme == "bayra"
+        } ?: false
+
+        setContent { PassengerSuperApp(startInRecovery = isDeepLinkRecovery) }
     }
 }
 
@@ -148,7 +154,7 @@ fun sendSecurityEmailTrigger(email: String, name: String, status: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PassengerSuperApp() {
+fun PassengerSuperApp(startInRecovery: Boolean = false) {
     val ctx = LocalContext.current
     val activity = ctx as? ComponentActivity
     val prefs = remember { ctx.getSharedPreferences("bayra_p_v231", Context.MODE_PRIVATE) }
@@ -159,10 +165,12 @@ fun PassengerSuperApp() {
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var pPhoto by rememberSaveable { mutableStateOf(prefs.getString("photo", "") ?: "") }
     var pPass by rememberSaveable { mutableStateOf(prefs.getString("pw", "") ?: "") }
-    var isAuth by remember { mutableStateOf(prefs.getBoolean("auth", false)) }
+    var isAuth by remember { mutableStateOf(if (startInRecovery) false else prefs.getBoolean("auth", false)) }
     
     var isCheckingLogin by remember { mutableStateOf(false) }
-    var isRecoveringPassword by rememberSaveable { mutableStateOf(false) }
+    
+    // 🎯 OPENS IMAGE 1 DIRECTLY IF CLICKED FROM EMAIL
+    var isRecoveringPassword by rememberSaveable { mutableStateOf(startInRecovery) }
 
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
@@ -175,7 +183,6 @@ fun PassengerSuperApp() {
     var currentView by rememberSaveable { mutableStateOf("MAP") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
-    // 🔥 POP-UP STATE & LISTENER
     var popupData by remember { mutableStateOf<DataSnapshot?>(null) }
     var showPopup by remember { mutableStateOf(false) }
 
@@ -188,7 +195,6 @@ fun PassengerSuperApp() {
                         if (!prefs.getBoolean("dismissed_popup_$popupId", false)) {
                             popupData = s
                             showPopup = true
-                            Toast.makeText(ctx, "📣 Pop-up Alert: ${s.child("title").value}", Toast.LENGTH_LONG).show()
                         }
                     } else {
                         showPopup = false
@@ -269,10 +275,8 @@ fun PassengerSuperApp() {
                                         pPass = pw
                                         isAuth = true
 
-                                        // 🔥 TRIGGER SUCCESS EMAIL
                                         sendSecurityEmailTrigger(existingEmail, existingName, "SUCCESS")
                                     } else {
-                                        // 🛑 TRIGGER FAILED PASSWORD EMAIL
                                         sendSecurityEmailTrigger(existingEmail, existingName, "FAILED")
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
@@ -301,7 +305,6 @@ fun PassengerSuperApp() {
                                     pPass = pw
                                     isAuth = true
 
-                                    // 🔥 TRIGGER REGISTRATION SUCCESS EMAIL
                                     sendSecurityEmailTrigger(formattedE, formattedN, "SUCCESS")
                                     Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
@@ -367,7 +370,7 @@ fun PassengerSuperApp() {
                 }
             }
 
-            // 🔥 OFFICIAL GOOGLE MATERIAL 3 ALERT DIALOG
+            // 🔥 IN-APP POPUP DIALOG
             if (showPopup && popupData != null) {
                 AlertDialog(
                     onDismissRequest = {
