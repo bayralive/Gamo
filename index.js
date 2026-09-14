@@ -153,29 +153,46 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🌐 DEEP LINK WEB BRIDGE (OPENS APP TO IMAGE 1 DIRECTLY)
+// 🌐 OFFICIAL CHROME INTENT BRIDGE (GUARANTEED TO LAUNCH APP)
 app.get('/reset-password', (req, res) => {
+    // Official Android Intent URI that Chrome understands:
+    const androidIntentUrl = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;end";
+    
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
+            <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Bayra Travel Security Bridge</title>
+            <title>Bayra Account Recovery</title>
             <style>
-                body { font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
-                .card { max-width: 420px; margin: auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-                .btn { display: block; background: #1A237E; color: white; padding: 14px; text-decoration: none; border-radius: 10px; font-weight: bold; margin-top: 20px; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
+                .card { max-width: 440px; margin: auto; background: white; padding: 35px 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+                .btn-app { display: block; background: #1A237E; color: #ffffff !important; padding: 16px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 15px; margin-top: 25px; box-shadow: 0 4px 12px rgba(26,35,126,0.3); }
+                .btn-tg { display: block; background: #229ED9; color: #ffffff !important; padding: 14px; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 12px; }
             </style>
         </head>
         <body>
             <div class="card">
-                <h2>🔒 Bayra Account Recovery</h2>
-                <p style="color: #64748b;">Redirecting you securely to the Bayra Travel app...</p>
-                <a href="bayra://recover" class="btn">OPEN BAYRA TRAVEL APP</a>
-                <p style="margin-top: 20px; font-size: 12px; color: gray;">If the app does not open automatically, tap the button above.</p>
+                <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
+                <h2 style="margin: 0 0 10px 0; color: #1A237E;">Bayra Account Recovery</h2>
+                <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Tap below to launch the Bayra Travel app and reset your password:</p>
+                
+                <!-- 🚀 GUARANTEED CHROME ANDROID LAUNCHER -->
+                <a href="${androidIntentUrl}" class="btn-app">OPEN BAYRA TRAVEL APP</a>
+                
+                <!-- 💬 DIRECT TELEGRAM RECOVERY -->
+                <a href="https://t.me/bayratravelchat" class="btn-tg">💬 RESET VIA TELEGRAM SUPPORT</a>
+                
+                <p style="margin-top: 25px; font-size: 12px; color: #94a3b8;">
+                    In the app, tap <strong>"Forgot Password"</strong> to receive your instant code!
+                </p>
             </div>
             <script>
-                window.location.href = "bayra://recover";
+                // Auto-trigger app launch on page load
+                setTimeout(function() {
+                    window.location.href = "${androidIntentUrl}";
+                }, 500);
             </script>
         </body>
         </html>
@@ -237,7 +254,7 @@ app.post('/login-security-alert', async (req, res) => {
                 <p style="color: #4a5568;">An incorrect password was just entered for your Bayra Travel account.</p>
                 <div style="text-align: center; margin: 25px 0;">
                     <a href="${resetLink}" style="background-color: #1A237E; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: bold; display: inline-block;">
-                        Reset Password in App
+                        Reset Password
                     </a>
                 </div>
             </div>
@@ -257,7 +274,7 @@ app.post('/login-security-alert', async (req, res) => {
                 'Content-Type': 'application/json'
             }
         });
-        console.log(`✅ [PROMO EMAIL DELIVERED WITH DEEP LINK] Sent to ${email}!`);
+        console.log(`✅ [PROMO EMAIL DELIVERED] Sent to ${email}!`);
     } catch (err) {
         console.error("❌ [BREVO ERROR]:", err.response ? err.response.data : err.message);
     }
