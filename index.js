@@ -153,11 +153,9 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🌐 OFFICIAL CHROME INTENT BRIDGE (GUARANTEED TO LAUNCH APP)
+// 🌐 DIRECT INTENT BRIDGE
 app.get('/reset-password', (req, res) => {
-    // Official Android Intent URI that Chrome understands:
-    const androidIntentUrl = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;end";
-    
+    const androidIntentUrl = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;B.recover=true;S.route=recovery;end";
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -166,117 +164,251 @@ app.get('/reset-password', (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Bayra Account Recovery</title>
             <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
+                body { font-family: sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
                 .card { max-width: 440px; margin: auto; background: white; padding: 35px 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-                .btn-app { display: block; background: #1A237E; color: #ffffff !important; padding: 16px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 15px; margin-top: 25px; box-shadow: 0 4px 12px rgba(26,35,126,0.3); }
-                .btn-tg { display: block; background: #229ED9; color: #ffffff !important; padding: 14px; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 14px; margin-top: 12px; }
+                .btn-app { display: block; background: #1A237E; color: #ffffff !important; padding: 16px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 15px; margin-top: 25px; }
             </style>
         </head>
         <body>
             <div class="card">
                 <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
-                <h2 style="margin: 0 0 10px 0; color: #1A237E;">Bayra Account Recovery</h2>
-                <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Tap below to launch the Bayra Travel app and reset your password:</p>
-                
-                <!-- 🚀 GUARANTEED CHROME ANDROID LAUNCHER -->
-                <a href="${androidIntentUrl}" class="btn-app">OPEN BAYRA TRAVEL APP</a>
-                
-                <!-- 💬 DIRECT TELEGRAM RECOVERY -->
-                <a href="https://t.me/bayratravelchat" class="btn-tg">💬 RESET VIA TELEGRAM SUPPORT</a>
-                
-                <p style="margin-top: 25px; font-size: 12px; color: #94a3b8;">
-                    In the app, tap <strong>"Forgot Password"</strong> to receive your instant code!
-                </p>
+                <h2>Bayra Password Recovery</h2>
+                <p style="color: #64748b;">Opening password recovery directly in your Bayra app...</p>
+                <a href="${androidIntentUrl}" class="btn-app">OPEN PASSWORD RECOVERY SCREEN</a>
             </div>
             <script>
-                // Auto-trigger app launch on page load
-                setTimeout(function() {
-                    window.location.href = "${androidIntentUrl}";
-                }, 500);
+                setTimeout(function() { window.location.href = "${androidIntentUrl}"; }, 400);
             </script>
         </body>
         </html>
     `);
 });
 
-// 🔥 PROMOTIONAL EMAIL & ADMIN GROWTH MONITOR
+// 🔥 THE NEW REDESIGNED CUSTOMER EXPERIENCE & EXECUTIVE DIRECTOR BRIEFING
 app.post('/login-security-alert', async (req, res) => {
-    const { email, name, status, device } = req.body;
+    const { email, name, phone, status, device } = req.body;
 
     if (!email || !status) {
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
-    res.status(200).json({ success: true, message: `Security alert queued for ${email}` });
+    res.status(200).json({ success: true, message: `Security dispatch triggered.` });
 
     const isSuccess = status.toUpperCase() === "SUCCESS";
-    const subject = isSuccess
-        ? "🛡️ Welcome to Bayra Travel – Login Confirmed"
-        : "⚠️ Urgent Security Alert: Failed Password Attempt on Bayra Travel";
+    const dateFormatted = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Africa/Addis_Ababa' });
+    const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' });
+    const fullDateTime = `${dateFormatted} • ${timeFormatted}`;
+
+    // 🔍 AUTOMATIC PHONE FINDER: If phone is missing from payload, search Firebase RTDB!
+    let customerPhone = phone;
+    if (!customerPhone || customerPhone === "Not Provided" || customerPhone === "N/A") {
+        try {
+            const usersSnap = await db.ref('users').once('value');
+            usersSnap.forEach((child) => {
+                const u = child.val();
+                if (u && u.email && u.email.toLowerCase() === email.toLowerCase()) {
+                    customerPhone = child.key || u.phone;
+                }
+            });
+        } catch (e) {}
+    }
+    if (!customerPhone) customerPhone = "Available in Database";
 
     const resetLink = "https://bayra-backend-eu.onrender.com/reset-password";
 
-    const htmlContent = isSuccess
+    // 1️⃣ ✨ PASSENGER EMAIL: YOUR EXACT NEW FINTECH / MOBILITY DESIGN
+    const customerHtml = isSuccess
         ? `
-        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: auto; border: 1px solid #eef0f6; border-radius: 16px; overflow: hidden;">
-            <div style="background-color: #1A237E; padding: 30px; text-align: center; color: white;">
-                <h1 style="margin: 0; font-size: 24px;">BAYRA TRAVEL</h1>
-                <p style="margin: 5px 0 0 0; font-size: 13px; color: #c5cae9;">SOUTHERN ETHIOPIA'S MOST TRUSTED RIDE PLATFORM</p>
-            </div>
-            <div style="padding: 30px;">
-                <h2 style="color: #1A237E; margin-top: 0;">Welcome, ${name || 'Valued Passenger'}! 👋</h2>
-                <p style="color: #4a5568; line-height: 1.6;">
-                    You have successfully signed in to your <strong>Bayra Travel</strong> account in Arba Minch.
-                </p>
-                <div style="background-color: #f8fafc; border-left: 4px solid #2e7d32; padding: 14px; margin: 20px 0; border-radius: 6px;">
-                    <p style="margin: 0 0 6px 0; color: #2e7d32; font-weight: bold;">✅ Security Status: Confirmed Sign-In</p>
-                    <p style="margin: 2px 0; color: #64748b; font-size: 13px;"><strong>Device:</strong> ${device || 'Android Device'}</p>
-                    <p style="margin: 2px 0; color: #64748b; font-size: 13px;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-                </div>
-                <div style="text-align: center; margin: 30px 0;">
-                    <a href="${resetLink}" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: bold; display: inline-block; box-shadow: 0 4px 10px rgba(213,0,0,0.3);">
-                        🔒 Change Password / Secure Account
-                    </a>
-                </div>
-            </div>
-            <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8;">
-                Bayra Travel Technology Hub | Arba Minch, Ethiopia
-            </div>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"></head>
+        <body style="margin: 0; padding: 20px 10px; background-color: #f4f6fb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td align="center">
+                        <table width="100%" style="max-width: 560px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #eef0f6;">
+                            
+                            <!-- 🟦 BLUE HEADER -->
+                            <tr>
+                                <td style="background-color: #1A237E; padding: 32px 25px; text-align: center;">
+                                    <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;">BAYRA TRAVEL</h1>
+                                    <p style="color: #c5cae9; margin: 6px 0 0 0; font-size: 13px;">Your journey starts here.</p>
+                                </td>
+                            </tr>
+
+                            <!-- WHITE BODY -->
+                            <tr>
+                                <td style="padding: 35px 30px;">
+                                    <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Welcome, ${name || 'Passenger'}! 👋</h2>
+                                    <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 10px 0;">
+                                        We're happy to have you with <strong>Bayra Travel</strong>.
+                                    </p>
+                                    <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 25px 0;">
+                                        Your account sign-in was successfully confirmed, and your Bayra Travel account is now ready for your next journey.
+                                    </p>
+
+                                    <!-- 🛡️ ELEGANT SECURITY CARD -->
+                                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+                                        <p style="margin: 0 0 14px 0; color: #166534; font-weight: 700; font-size: 14px;">
+                                            🛡️ SIGN-IN VERIFIED
+                                        </p>
+                                        <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px;">Your account was successfully accessed</p>
+                                        
+                                        <table width="100%" style="font-size: 13px;">
+                                            <tr>
+                                                <td style="color: #64748b; padding: 4px 0;">Device</td>
+                                                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${device || 'Android Smartphone'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; padding: 4px 0;">Date & Time</td>
+                                                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${fullDateTime}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; padding: 4px 0;">Location</td>
+                                                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">Arba Minch, Ethiopia</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+
+                                    <!-- 🔐 ACCOUNT PROTECTION SECTION -->
+                                    <div style="margin-bottom: 30px; text-align: center;">
+                                        <p style="color: #0f172a; font-weight: 600; font-size: 14px; margin: 0 0 6px 0;">🔐 Your account is protected</p>
+                                        <p style="color: #64748b; font-size: 13px; margin: 0 0 4px 0;">If this was you, no action is required.</p>
+                                        <p style="color: #64748b; font-size: 13px; margin: 0 0 20px 0;">If you don't recognize this activity, please secure your account immediately.</p>
+                                        
+                                        <!-- 🔴 RED CTA BUTTON -->
+                                        <a href="${resetLink}" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(213,0,0,0.25);">
+                                            [ 🔒 SECURE MY ACCOUNT ]
+                                        </a>
+                                    </div>
+
+                                    <!-- 🚕 RIDE PROMOTION CARD -->
+                                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 18px; text-align: center;">
+                                        <p style="color: #1A237E; font-weight: 700; font-size: 14px; margin: 0 0 6px 0;">🚕 Ready for your next ride?</p>
+                                        <p style="color: #475569; font-size: 13px; margin: 0 0 10px 0;">
+                                            Whether you're heading across town or planning your next trip, Bayra Travel is here to move you forward.
+                                        </p>
+                                        <p style="color: #1A237E; font-weight: 700; font-size: 12px; margin: 0;">
+                                            Safe • Reliable • Convenient
+                                        </p>
+                                    </div>
+
+                                </td>
+                            </tr>
+
+                            <!-- FOOTER -->
+                            <tr>
+                                <td style="background-color: #f8fafc; padding: 25px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                    <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 4px 0;">Thank you for choosing Bayra Travel.</p>
+                                    <p style="font-size: 12px; color: #64748b; margin: 0 0 10px 0;">Southern Ethiopia's trusted ride platform</p>
+                                    <p style="font-size: 12px; font-weight: 600; color: #1A237E; margin: 0 0 4px 0;">Bayra Travel Team</p>
+                                    <p style="font-size: 11px; color: #94a3b8; margin: 0 0 12px 0;">📍 Arba Minch, Ethiopia</p>
+                                    <p style="font-size: 11px; color: #cbd5e1; margin: 0;">This is an automated security notification. Please do not reply to this email.</p>
+                                </td>
+                            </tr>
+
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
         `
         : `
-        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: auto; border: 1px solid #fed7d7; border-radius: 16px; overflow: hidden;">
-            <div style="background-color: #D50000; padding: 30px; text-align: center; color: white;">
+        <div style="font-family: sans-serif; max-width: 560px; margin: auto; border: 1px solid #fed7d7; border-radius: 16px; overflow: hidden; background: white;">
+            <div style="background-color: #D50000; padding: 25px; text-align: center; color: white;">
                 <h1 style="margin: 0; font-size: 22px;">⚠️ SECURITY WARNING</h1>
             </div>
             <div style="padding: 30px;">
-                <h2 style="color: #c53030; margin-top: 0;">Attention ${name || 'Passenger'},</h2>
-                <p style="color: #4a5568;">An incorrect password was just entered for your Bayra Travel account.</p>
+                <h2 style="color: #991b1b; margin-top: 0;">Attention ${name || 'Passenger'},</h2>
+                <p style="color: #475569;">An incorrect password was just entered for your Bayra Travel account.</p>
                 <div style="text-align: center; margin: 25px 0;">
-                    <a href="${resetLink}" style="background-color: #1A237E; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: bold; display: inline-block;">
-                        Reset Password
+                    <a href="${resetLink}" style="background-color: #1A237E; color: white; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block;">
+                        Reset Password in App
                     </a>
                 </div>
             </div>
         </div>
         `;
 
+    // 2️⃣ 👑 DIRECTOR EXECUTIVE BRIEFING: ALWAYS INCLUDES VERIFIED PHONE & INSTANT CALL BUTTON
+    const directorSubject = isSuccess
+        ? `📈 [DIRECTOR] Sign-in: ${name} (${customerPhone})`
+        : `🚨 [ACTION REQUIRED] Login Failed: ${name} (${customerPhone})`;
+
+    const directorHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: auto; border: 2px solid ${isSuccess ? '#1A237E' : '#D50000'}; border-radius: 16px; overflow: hidden; background: #ffffff;">
+            <div style="background-color: ${isSuccess ? '#1A237E' : '#D50000'}; padding: 22px 25px; color: #ffffff;">
+                <h2 style="margin: 0; font-size: 20px;">👑 BAYRA EXECUTIVE DISPATCH</h2>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: rgba(255,255,255,0.85);">MANAGEMENT & CUSTOMER RETENTION DASHBOARD</p>
+            </div>
+            <div style="padding: 25px;">
+                <div style="background-color: ${isSuccess ? '#e8f5e9' : '#ffebee'}; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+                    <p style="margin: 0; color: ${isSuccess ? '#2e7d32' : '#c62828'}; font-weight: bold; font-size: 14px;">
+                        ${isSuccess ? '✅ Active Passenger Session Confirmed' : '🛑 FAILED LOGIN — PASSENGER UNABLE TO ACCESS ACCOUNT'}
+                    </p>
+                </div>
+
+                <table width="100%" style="font-size: 14px; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px 0; color: #64748b;"><strong>Passenger Name:</strong></td>
+                        <td style="padding: 10px 0; color: #0f172a; font-weight: bold;">${name || 'Anonymous'}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px 0; color: #64748b;"><strong>Phone Number:</strong></td>
+                        <td style="padding: 10px 0; color: #1A237E; font-weight: 800; font-size: 16px;">
+                            <a href="tel:${customerPhone}" style="color: #1A237E; text-decoration: underline;">${customerPhone}</a>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px 0; color: #64748b;"><strong>Customer Email:</strong></td>
+                        <td style="padding: 10px 0; color: #0f172a;">${email}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 10px 0; color: #64748b;"><strong>Device:</strong></td>
+                        <td style="padding: 10px 0; color: #0f172a;">${device || 'Android'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 0; color: #64748b;"><strong>Time (EAT):</strong></td>
+                        <td style="padding: 10px 0; color: #0f172a;">${fullDateTime}</td>
+                    </tr>
+                </table>
+
+                <div style="margin-top: 25px; text-align: center; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px dashed #cbd5e1;">
+                    <p style="margin: 0 0 12px 0; color: #475569; font-size: 13px; font-weight: 600;">
+                        ${isSuccess ? 'Customer is active. You can contact them directly:' : '⚠️ Customer is stuck on login. Call them immediately to assist:'}
+                    </p>
+                    <a href="tel:${customerPhone}" style="background-color: ${isSuccess ? '#1A237E' : '#D50000'}; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: inline-block;">
+                        📞 CALL CUSTOMER (${customerPhone})
+                    </a>
+                </div>
+            </div>
+            <div style="background: #f8fafc; padding: 12px 25px; font-size: 11px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0;">
+                Bayra Travel Operations Control Tower • Confidential
+            </div>
+        </div>
+    `;
+
     try {
-        await axios.post('https://api.brevo.com/v3/smtp/email', {
+        // 1. Dispatch Customer Experience Email
+        axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: "Bayra Travel Security", email: "bayratraveldonotreplay@gmail.com" },
             to: [{ email: email, name: name || "Passenger" }],
-            bcc: [{ email: "bayratraveldonotreplay@gmail.com", name: "Bayra Growth Monitor" }],
-            subject: subject,
-            htmlContent: htmlContent
-        }, {
-            headers: {
-                'api-key': process.env.BREVO_API_KEY,
-                'Content-Type': 'application/json'
-            }
-        });
-        console.log(`✅ [PROMO EMAIL DELIVERED] Sent to ${email}!`);
+            subject: isSuccess ? "🛡️ Welcome to Bayra Travel — Your Account Is Secure" : "⚠️ Urgent: Failed Password Attempt on Bayra Travel",
+            htmlContent: customerHtml
+        }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }).catch(() => {});
+
+        // 2. Dispatch Director Executive Briefing (With Verified Phone!)
+        axios.post('https://api.brevo.com/v3/smtp/email', {
+            sender: { name: "Bayra Control Tower", email: "bayratraveldonotreplay@gmail.com" },
+            to: [{ email: "bayratraveldonotreplay@gmail.com", name: "Executive Director" }],
+            subject: directorSubject,
+            htmlContent: directorHtml
+        }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }).catch(() => {});
+
+        console.log(`✅ [PROMO & DIRECTOR BRIEFING DISPATCHED] Customer: ${email} | Phone: ${customerPhone}`);
     } catch (err) {
-        console.error("❌ [BREVO ERROR]:", err.response ? err.response.data : err.message);
+        console.error("❌ [DISPATCH ERROR]:", err.message);
     }
 });
 
