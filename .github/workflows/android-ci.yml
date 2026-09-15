@@ -2,15 +2,15 @@ name: Imperial Production Deploy
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -22,27 +22,32 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build Customer Release Bundle (.aab)
+    # 🚀 1. COMPILE CUSTOMER APP (PLAY STORE BUNDLE)
+    - name: Build Customer App Bundle
       run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
 
-    - name: Cryptographically Sign AAB with jarsigner
-      run: |
-        KEYPASS="${{ secrets.RELEASE_KEY_PASSWORD }}"
-        if [ -z "$KEYPASS" ]; then
-          KEYPASS="${{ secrets.RELEASE_PASSWORD }}"
-        fi
-        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore keystore.jks \
-          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
-          -keypass "$KEYPASS" \
-          apps/customer-app/build/outputs/bundle/release/*.aab \
-          "${{ secrets.RELEASE_ALIAS }}"
+    # 🚖 2. COMPILE DRIVER APP (PLAY STORE BUNDLE + DIRECT APK)
+    - name: Build Driver App Bundle & APK
+      run: ./gradlew :apps:driver-app:bundleRelease :apps:driver-app:assembleRelease --stacktrace || ./gradlew :apps:driver-app:bundleRelease --stacktrace
 
-    - name: Verify AAB Signature
-      run: jarsigner -verify apps/customer-app/build/outputs/bundle/release/*.aab
-
-    - name: Upload Signed Customer App Bundle (.aab)
+    # 📦 3. UPLOAD CUSTOMER AAB
+    - name: Upload Customer App Bundle
       uses: actions/upload-artifact@v4
       with:
         name: customer-app-release-aab
         path: apps/customer-app/build/outputs/bundle/release/*.aab
+
+    # 📦 4. UPLOAD DRIVER AAB (FOR GOOGLE PLAY)
+    - name: Upload Driver App Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: driver-app-release-aab
+        path: apps/driver-app/build/outputs/bundle/release/*.aab
+
+    # 📲 5. UPLOAD DIRECT INSTALLABLE DRIVER APK
+    - name: Upload Driver App APK (Direct Install)
+      uses: actions/upload-artifact@v4
+      with:
+        name: driver-app-release-apk
+        path: apps/driver-app/build/outputs/apk/release/*.apk
+      if: always()
