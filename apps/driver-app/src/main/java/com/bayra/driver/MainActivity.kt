@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.bayra.driver
 
 import android.Manifest
@@ -86,7 +88,6 @@ class MainActivity : ComponentActivity() {
     fun playAlarm() { try { RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)).play() } catch (e: Exception) {} }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAppRoot() {
     val ctx = LocalContext.current
@@ -241,10 +242,6 @@ fun DriverAppRoot() {
     }
 }
 
-// ==========================================
-// 1. DRIVER AUTHENTICATION
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverAuthScreen(onSuccess: (String, String) -> Unit) {
     val ctx = LocalContext.current
@@ -343,10 +340,6 @@ fun DriverAuthScreen(onSuccess: (String, String) -> Unit) {
     }
 }
 
-// ==========================================
-// 2. VEHICLE GATE
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VehicleGateScreen(driverName: String) {
     val ctx = LocalContext.current
@@ -425,9 +418,6 @@ fun VehicleGateScreen(driverName: String) {
     }
 }
 
-// ==========================================
-// 3. CHOOSE VERIFICATION PATH
-// ==========================================
 @Composable
 fun VerificationChoiceScreen(driverName: String) {
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName")
@@ -491,10 +481,6 @@ fun VerificationChoiceScreen(driverName: String) {
     }
 }
 
-// ==========================================
-// 4 & 6. COMMISSIONING PORTAL / 11TH-RIDE WALL
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCount: Int, imperialId: String) {
     val ctx = LocalContext.current
@@ -607,9 +593,6 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
     }
 }
 
-// ==========================================
-// 9. RADAR HUB SCREEN
-// ==========================================
 @Composable
 fun RadarHubScreen(
     driverName: String,
@@ -882,9 +865,6 @@ fun RadarHubScreen(
     }
 }
 
-// ==========================================
-// 12, 13 & 14. DEBT CLEARANCE VAULT
-// ==========================================
 @Composable
 fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
@@ -995,10 +975,6 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     }
 }
 
-// ==========================================
-// 17-21. DRIVER WALLET & WITHDRAWAL
-// ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverWalletScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
@@ -1152,9 +1128,6 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int) {
     }
 }
 
-// ==========================================
-// 24. DRIVER PROFILE SCREEN
-// ==========================================
 @Composable
 fun DriverProfileScreen(
     name: String,
@@ -1237,9 +1210,6 @@ fun ProfileRow(label: String, value: String) {
     }
 }
 
-// ==========================================
-// 22. RIDE HISTORY
-// ==========================================
 @Composable
 fun DriverRideHistoryScreen(driverName: String) {
     var history by remember { mutableStateOf(listOf<DataSnapshot>()) }
@@ -1283,9 +1253,6 @@ fun DriverRideHistoryScreen(driverName: String) {
     }
 }
 
-// ==========================================
-// BACKGROUND BEACON SERVICE
-// ==========================================
 class ImmortalBeaconService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
@@ -1308,9 +1275,6 @@ class ImmortalBeaconService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 }
 
-// ==========================================
-// FIREBASE CLOUD MESSAGING
-// ==========================================
 class BayraMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
