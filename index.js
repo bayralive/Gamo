@@ -25,9 +25,6 @@ try {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
-const BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
-const CHAT_ID = "5232430147";
-
 // --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -112,31 +109,65 @@ async function sendPush(token, title, body) {
     } catch (e) {}
 }
 
-// --- TELEGRAM CODE SENDER (FIXES GATEWAY DELAYED ERROR) ---
+// --- HELPER: SEND OFFICIAL TELEGRAM GATEWAY VERIFICATION ---
+async function dispatchTelegramGatewayVerification(phone, pin) {
+    let formattedPhone = phone.trim();
+    if (formattedPhone.startsWith('0')) {
+        formattedPhone = '+251' + formattedPhone.substring(1);
+    } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+    }
+
+    console.log(`📡 [TELEGRAM GATEWAY INITIATED] Target: ${formattedPhone} | PIN: ${pin}`);
+
+    const response = await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
+        phone_number: formattedPhone,
+        code: pin
+    }, {
+        headers: {
+            'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    return response.data;
+}
+
+// 🔥 APP TELEGRAM GATEWAY ENDPOINT
 app.post('/send-telegram-code', async (req, res) => {
     const { phone, pin } = req.body;
     try {
-        let formattedPhone = phone.startsWith('0') ? '+251' + phone.substring(1) : ('+' + phone);
-        if (process.env.TELEGRAM_GATEWAY_KEY) {
-            await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
-                phone_number: formattedPhone, code: pin
-            }, {
-                headers: { 'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`, 'Content-Type': 'application/json' }
-            });
-        } else {
-            const msg = `🚨 BAYRA VERIFICATION\nPhone: ${phone}\nPIN: ${pin}`;
-            await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
-        }
+        await dispatchTelegramGatewayVerification(phone, pin);
+        console.log(`✅ [APP GATEWAY SUCCESS] Sent to ${phone}`);
         res.status(200).json({ success: true });
     } catch (e) {
-        // Fallback directly to Telegram Bot
-        try {
-            const msg = `🚨 BAYRA VERIFICATION\nPhone: ${phone}\nPIN: ${pin}`;
-            await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
-            res.status(200).json({ success: true });
-        } catch (err2) {
-            res.status(500).json({ success: false });
+        console.error("❌ [GATEWAY ERROR]:", e.response ? e.response.data : e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 🔥 WEB TELEGRAM GATEWAY ENDPOINT (NOW CALLS OFFICIAL GATEWAY!)
+app.post('/api/web-send-pin', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone number." });
+
+    try {
+        const userSnap = await db.ref(`users/${phone}`).once('value');
+        if (!userSnap.exists()) {
+            return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
         }
+
+        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+        await db.ref(`verifications/${phone}/code`).set(pin);
+
+        // 🚀 CALLS OFFICIAL TELEGRAM GATEWAY (APPEARS IN @VerificationCodes!)
+        await dispatchTelegramGatewayVerification(phone, pin);
+        console.log(`✅ [WEB GATEWAY SUCCESS] Code dispatched to ${phone} via @VerificationCodes!`);
+
+        res.status(200).json({ success: true });
+    } catch (e) {
+        console.error("❌ [WEB GATEWAY FAILED]:", e.response ? e.response.data : e.message);
+        res.status(500).json({ success: false, message: "Gateway error. Please try again or use backup 123456." });
     }
 });
 
@@ -184,31 +215,7 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🔥 API 1: WEB SEND CODE
-app.post('/api/web-send-pin', async (req, res) => {
-    const { phone } = req.body;
-    if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone" });
-
-    try {
-        const userSnap = await db.ref(`users/${phone}`).once('value');
-        if (!userSnap.exists()) {
-            return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
-        }
-
-        const pin = Math.floor(100000 + Math.random() * 900000).toString();
-        await db.ref(`verifications/${phone}/code`).set(pin);
-
-        // Send via Telegram
-        const msg = `🚨 BAYRA WEB RECOVERY\nPhone: ${phone}\nPIN: ${pin}`;
-        await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`).catch(() => {});
-
-        res.status(200).json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
-
-// 🔥 API 2: WEB VERIFY & RESET PASSWORD
+// --- WEB VERIFY & RESET PASSWORD ---
 app.post('/api/web-reset-password', async (req, res) => {
     const { phone, code, newPassword } = req.body;
     if (!phone || !code || !newPassword) return res.status(400).json({ success: false, message: "Missing fields" });
@@ -219,16 +226,17 @@ app.post('/api/web-reset-password', async (req, res) => {
 
         if (storedCode == code || code === "123456") {
             await db.ref(`users/${phone}/password`).set(newPassword);
+            console.log(`✅ [PASSWORD RESET SUCCESS] Phone: ${phone}`);
             res.status(200).json({ success: true, message: "Password updated successfully!" });
         } else {
-            res.status(400).json({ success: false, message: "Invalid Telegram verification code." });
+            res.status(400).json({ success: false, message: "Invalid verification code." });
         }
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
 });
 
-// 🌐 CHOICE B: INTERACTIVE WEB RECOVERY PORTAL (EXACT REPLICA OF YOUR 2 SCREENSHOTS)
+// 🌐 CHOICE B: WEB RECOVERY PORTAL
 app.get('/reset-password', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -260,8 +268,6 @@ app.get('/reset-password', (req, res) => {
     </head>
     <body>
         <div class="container">
-            
-            <!-- SVG BLUE LOCK ICON -->
             <svg class="lock-icon" viewBox="0 0 24 24" fill="#1A237E">
                 <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
             </svg>
@@ -269,60 +275,44 @@ app.get('/reset-password', (req, res) => {
             <h1>PASSWORD RECOVERY</h1>
             <p class="subtitle">Powered by Telegram Gateway</p>
 
-            <!-- 📸 SCREEN 1 (FIRST SCREENSHOT) -->
             <div id="step1">
                 <div class="input-group">
                     <span class="floating-label">Registered Phone Number</span>
                     <input type="tel" id="phone" class="input-box" placeholder="e.g. 0911223344">
                 </div>
-
                 <button id="btnSendCode" class="btn-primary" onclick="sendPin()">
                     <span id="btnSendText">SEND CODE VIA TELEGRAM</span>
                     <div id="btnSendSpinner" class="spinner"></div>
                 </button>
-
-                <div>
-                    <a href="https://bayra-backend-eu.onrender.com" class="btn-back">Back to Login</a>
-                </div>
+                <div><a href="javascript:location.reload()" class="btn-back">Back to Login</a></div>
             </div>
 
-            <!-- 📸 SCREEN 2 (SECOND SCREENSHOT) -->
             <div id="step2">
                 <div class="input-group">
                     <span class="floating-label">Enter Telegram Code</span>
                     <input type="text" id="code" class="input-box" placeholder="6-digit PIN">
                 </div>
-
                 <div class="input-group">
                     <span class="floating-label">Enter New Password</span>
                     <input type="password" id="newPass" class="input-box" placeholder="••••••••">
                     <button type="button" class="btn-toggle" onclick="togglePass()">SHOW</button>
                 </div>
-
                 <button id="btnResetPass" class="btn-primary" onclick="resetPassword()">
                     <span id="btnResetText">SECURE NEW PASSWORD</span>
                     <div id="btnResetSpinner" class="spinner"></div>
                 </button>
-
-                <div>
-                    <a href="https://t.me/bayratravelchat" class="text-link">Didn't get a code? Contact Support Team</a>
-                </div>
-
-                <div>
-                    <a href="javascript:location.reload()" class="btn-back">Back to Login</a>
-                </div>
+                <div><a href="https://t.me/bayratravelchat" class="text-link">Didn't get a code? Contact Support Team</a></div>
+                <div><a href="javascript:location.reload()" class="btn-back">Back to Login</a></div>
             </div>
 
-            <!-- 🎉 SCREEN 3 (SUCCESS CONFIRMATION) -->
             <div id="stepSuccess">
                 <div style="font-size: 50px; margin-bottom: 15px;">✅</div>
                 <h2 style="color: #2e7d32; margin: 0 0 10px 0;">Password Reset Successful!</h2>
-                <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Your account is now secure. You can return to the Bayra Travel app and log in with your new password.</p>
+                <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Your account is secure. You can now log into the Bayra Travel app with your new password.</p>
                 <a href="intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;end" class="btn-primary" style="text-decoration: none; margin-top: 25px;">
                     OPEN APP & LOG IN
                 </a>
             </div>
-
         </div>
 
         <script>
@@ -334,7 +324,6 @@ app.get('/reset-password', (req, res) => {
                     alert("Please enter a valid phone number.");
                     return;
                 }
-
                 document.getElementById("btnSendText").style.display = "none";
                 document.getElementById("btnSendSpinner").style.display = "block";
 
@@ -345,7 +334,6 @@ app.get('/reset-password', (req, res) => {
                         body: JSON.stringify({ phone: phoneInput })
                     });
                     const data = await res.json();
-                    
                     if (res.ok) {
                         currentPhone = phoneInput;
                         document.getElementById("step1").style.display = "none";
@@ -364,12 +352,10 @@ app.get('/reset-password', (req, res) => {
             async function resetPassword() {
                 const code = document.getElementById("code").value.trim();
                 const newPass = document.getElementById("newPass").value.trim();
-
                 if (code.length < 4 || newPass.length < 4) {
                     alert("Please enter your PIN and a password with at least 4 characters.");
                     return;
                 }
-
                 document.getElementById("btnResetText").style.display = "none";
                 document.getElementById("btnResetSpinner").style.display = "block";
 
@@ -380,12 +366,11 @@ app.get('/reset-password', (req, res) => {
                         body: JSON.stringify({ phone: currentPhone, code: code, newPassword: newPass })
                     });
                     const data = await res.json();
-
                     if (res.ok) {
                         document.getElementById("step2").style.display = "none";
                         document.getElementById("stepSuccess").style.display = "block";
                     } else {
-                        alert(data.message || "Invalid Telegram Code.");
+                        alert(data.message || "Invalid Telegram Code. (Backup: 123456)");
                     }
                 } catch (e) {
                     alert("Failed to reset password. Please try again.");
@@ -443,7 +428,6 @@ app.post('/login-security-alert', async (req, res) => {
 
     const resetLink = "https://bayra-backend-eu.onrender.com/reset-password";
 
-    // 1️⃣ CUSTOMER EMAIL HTML
     const customerHtml = `
     <!DOCTYPE html>
     <html>
@@ -504,7 +488,6 @@ app.post('/login-security-alert', async (req, res) => {
     </html>
     `;
 
-    // 2️⃣ DIRECTOR EXECUTIVE BRIEFING HTML
     const directorSubject = isSuccess
         ? `📈 [DIRECTOR REPORT] Login Success: ${name} (${customerPhone})`
         : `🚨 [URGENT ACTION] Customer Login Failed: ${name} (${customerPhone})`;
@@ -563,7 +546,6 @@ app.post('/login-security-alert', async (req, res) => {
     `;
 
     try {
-        // 1. Send Customer Email
         await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: "Bayra Travel Security", email: "bayratraveldonotreplay@gmail.com" },
             to: [{ email: email, name: name || "Passenger" }],
@@ -573,7 +555,6 @@ app.post('/login-security-alert', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 300));
 
-        // 2. Send Director Briefing with Phone
         await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: "Bayra Control Tower", email: "bayratraveldonotreplay@gmail.com" },
             to: [{ email: "bayratraveldonotreplay@gmail.com", name: "Executive Director" }],
