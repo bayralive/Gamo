@@ -21,9 +21,12 @@ try {
     db = admin.database();
     console.log("✅ Firebase Admin Connected.");
     activateImperialWatchman();
+    activatePopupScheduler();
 } catch (error) {
     console.error("❌ FIREBASE INIT FAILED:", error.message);
 }
+
+const BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
 
 // --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -82,6 +85,23 @@ function activateImperialWatchman() {
     });
 }
 
+// ⏰ AUTOMATIC POP-UP EXPIRATION PATROL (CHECKS EVERY 60 SECONDS)
+function activatePopupScheduler() {
+    setInterval(async () => {
+        try {
+            const snap = await db.ref('app_config/active_popup').once('value');
+            if (snap.exists()) {
+                const popup = snap.val();
+                const now = Date.now();
+                if (popup.expiresAt && now > popup.expiresAt) {
+                    await snap.ref.remove();
+                    console.log(`⏰ [CAMPAIGN EXPIRED] Automatically removed scheduled pop-up: ${popup.id}`);
+                }
+            }
+        } catch (e) {}
+    }, 60000);
+}
+
 async function sendToUser(userName, title, body) {
     try {
         const userSnap = await db.ref(`users/${userName}`).once('value');
@@ -109,65 +129,22 @@ async function sendPush(token, title, body) {
     } catch (e) {}
 }
 
-// --- HELPER: SEND OFFICIAL TELEGRAM GATEWAY VERIFICATION ---
-async function dispatchTelegramGatewayVerification(phone, pin) {
-    let formattedPhone = phone.trim();
-    if (formattedPhone.startsWith('0')) {
-        formattedPhone = '+251' + formattedPhone.substring(1);
-    } else if (!formattedPhone.startsWith('+')) {
-        formattedPhone = '+' + formattedPhone;
-    }
-
-    console.log(`📡 [TELEGRAM GATEWAY INITIATED] Target: ${formattedPhone} | PIN: ${pin}`);
-
-    const response = await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
-        phone_number: formattedPhone,
-        code: pin
-    }, {
-        headers: {
-            'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`,
-            'Content-Type': 'application/json'
-        }
-    });
-
-    return response.data;
-}
-
-// 🔥 APP TELEGRAM GATEWAY ENDPOINT
+// --- TELEGRAM GATEWAY APP ENDPOINT ---
 app.post('/send-telegram-code', async (req, res) => {
     const { phone, pin } = req.body;
     try {
-        await dispatchTelegramGatewayVerification(phone, pin);
-        console.log(`✅ [APP GATEWAY SUCCESS] Sent to ${phone}`);
+        let formattedPhone = phone.trim();
+        if (formattedPhone.startsWith('0')) formattedPhone = '+251' + formattedPhone.substring(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
+        await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
+            phone_number: formattedPhone, code: pin
+        }, {
+            headers: { 'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`, 'Content-Type': 'application/json' }
+        });
         res.status(200).json({ success: true });
     } catch (e) {
-        console.error("❌ [GATEWAY ERROR]:", e.response ? e.response.data : e.message);
         res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-// 🔥 WEB TELEGRAM GATEWAY ENDPOINT (NOW CALLS OFFICIAL GATEWAY!)
-app.post('/api/web-send-pin', async (req, res) => {
-    const { phone } = req.body;
-    if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone number." });
-
-    try {
-        const userSnap = await db.ref(`users/${phone}`).once('value');
-        if (!userSnap.exists()) {
-            return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
-        }
-
-        const pin = Math.floor(100000 + Math.random() * 900000).toString();
-        await db.ref(`verifications/${phone}/code`).set(pin);
-
-        // 🚀 CALLS OFFICIAL TELEGRAM GATEWAY (APPEARS IN @VerificationCodes!)
-        await dispatchTelegramGatewayVerification(phone, pin);
-        console.log(`✅ [WEB GATEWAY SUCCESS] Code dispatched to ${phone} via @VerificationCodes!`);
-
-        res.status(200).json({ success: true });
-    } catch (e) {
-        console.error("❌ [WEB GATEWAY FAILED]:", e.response ? e.response.data : e.message);
-        res.status(500).json({ success: false, message: "Gateway error. Please try again or use backup 123456." });
     }
 });
 
@@ -201,21 +178,80 @@ app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
     } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
 });
 
-// --- IN-APP POPUP ROUTE ---
+// 🔥 SMART SCHEDULED IN-APP POPUP ROUTE (SUPPORTS START & END DATES!)
 app.post('/send-popup', async (req, res) => {
-    const { title, text, imageUrl, popupId } = req.body;
+    const { title, text, imageUrl, popupId, endDate } = req.body;
+
     if (!title || !imageUrl || !popupId) {
         return res.status(400).json({ success: false, error: "Missing title, imageUrl, or popupId" });
     }
+
     try {
+        let expiryTimestamp = null;
+        if (endDate) {
+            // Parses dates like "2026-09-16" and sets expiration to 11:59:59 PM on that day!
+            expiryTimestamp = new Date(endDate).setHours(23, 59, 59, 999);
+        }
+
         await db.ref('app_config/active_popup').set({
-            id: popupId, title, text, imageUrl, timestamp: Date.now()
+            id: popupId,
+            title: title,
+            text: text,
+            imageUrl: imageUrl,
+            timestamp: Date.now(),
+            expiresAt: expiryTimestamp
         });
-        res.status(200).json({ success: true, message: "Pop-up is now live in the app!" });
-    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
+
+        res.status(200).json({
+            success: true,
+            message: `Pop-up is live! ${expiryTimestamp ? `Will auto-expire on ${endDate} at 11:59 PM` : 'Runs until manually stopped.'}`
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
-// --- WEB VERIFY & RESET PASSWORD ---
+// 🛑 STOP / CLEAR POPUP IMMEDIATELY ROUTE
+app.post('/clear-popup', async (req, res) => {
+    try {
+        await db.ref('app_config/active_popup').remove();
+        console.log("🛑 [POPUP STOPPED] Manually deleted from all screens.");
+        res.status(200).json({ success: true, message: "Active pop-up stopped and removed from all phones!" });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- WEB GATEWAY RECOVERY & RESET ENDPOINTS ---
+app.post('/api/web-send-pin', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone number." });
+
+    try {
+        const userSnap = await db.ref(`users/${phone}`).once('value');
+        if (!userSnap.exists()) {
+            return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
+        }
+
+        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+        await db.ref(`verifications/${phone}/code`).set(pin);
+
+        let formattedPhone = phone.trim();
+        if (formattedPhone.startsWith('0')) formattedPhone = '+251' + formattedPhone.substring(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
+        await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', {
+            phone_number: formattedPhone, code: pin
+        }, {
+            headers: { 'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`, 'Content-Type': 'application/json' }
+        });
+
+        res.status(200).json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, message: "Gateway error. Use backup 123456." });
+    }
+});
+
 app.post('/api/web-reset-password', async (req, res) => {
     const { phone, code, newPassword } = req.body;
     if (!phone || !code || !newPassword) return res.status(400).json({ success: false, message: "Missing fields" });
@@ -226,10 +262,9 @@ app.post('/api/web-reset-password', async (req, res) => {
 
         if (storedCode == code || code === "123456") {
             await db.ref(`users/${phone}/password`).set(newPassword);
-            console.log(`✅ [PASSWORD RESET SUCCESS] Phone: ${phone}`);
             res.status(200).json({ success: true, message: "Password updated successfully!" });
         } else {
-            res.status(400).json({ success: false, message: "Invalid verification code." });
+            res.status(400).json({ success: false, message: "Invalid verification code. Try 123456" });
         }
     } catch (e) {
         res.status(500).json({ success: false, message: e.message });
@@ -253,7 +288,7 @@ app.get('/reset-password', (req, res) => {
             h1 { font-size: 24px; font-weight: 900; color: #1A237E; margin: 0 0 6px 0; letter-spacing: 0.5px; }
             .subtitle { font-size: 14px; color: #64748b; margin: 0 0 32px 0; }
             .input-group { margin-bottom: 20px; text-align: left; position: relative; }
-            .input-box { width: 100%; height: 56px; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 0 16px; font-size: 16px; color: #0f172a; outline: none; transition: 0.2s border; }
+            .input-box { width: 100%; height: 56px; border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 0 16px; font-size: 16px; color: #0f172a; outline: none; }
             .input-box:focus { border-color: #1A237E; }
             .floating-label { font-size: 12px; color: #64748b; position: absolute; top: -8px; left: 12px; background: white; padding: 0 4px; }
             .btn-primary { width: 100%; height: 60px; background: #1A237E; color: white; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; letter-spacing: 0.5px; cursor: pointer; display: flex; justify-content: center; align-items: center; }
