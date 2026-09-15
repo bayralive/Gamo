@@ -22,7 +22,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -98,7 +97,6 @@ fun DriverAppRoot() {
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var isAuth by remember { mutableStateOf(dName.isNotEmpty()) }
     
-    // Server-Authoritative Driver Profile State
     var driverStatus by remember { mutableStateOf("UNVERIFIED") }
     var vehicleType by remember { mutableStateOf<String?>(null) }
     var carPlate by remember { mutableStateOf<String?>(null) }
@@ -186,8 +184,8 @@ fun DriverAppRoot() {
                         NavigationBarItem(
                             selected = (currentTab == "WALLET"),
                             onClick = { currentTab = "WALLET" },
-                            icon = { Icon(Icons.Filled.AccountBalanceWallet, null) },
-                            label = { Text("Wallet", color = ImperialWhite, fontSize = 11.sp) }
+                            icon = { Icon(Icons.Filled.CheckCircle, null) },
+                            label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) }
                         )
                         NavigationBarItem(
                             selected = (currentTab == "PROFILE"),
@@ -269,8 +267,7 @@ fun DriverAuthScreen(onSuccess: (String, String) -> Unit) {
         OutlinedTextField(
             value = name, onValueChange = { name = it },
             label = { Text("Driver Full Name", color = Color.LightGray) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -278,8 +275,7 @@ fun DriverAuthScreen(onSuccess: (String, String) -> Unit) {
             value = phone, onValueChange = { phone = it },
             label = { Text("Phone Number", color = Color.LightGray) },
             modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -288,8 +284,7 @@ fun DriverAuthScreen(onSuccess: (String, String) -> Unit) {
             label = { Text("Password", color = Color.LightGray) },
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -887,9 +882,9 @@ fun RadarHubScreen(
     }
 }
 
-// =========================================================
-// 12, 13 & 14. DEBT CLEARANCE VAULT (CBE + TELEBIRR)
-// =========================================================
+// ==========================================
+// 12, 13 & 14. DEBT CLEARANCE VAULT
+// ==========================================
 @Composable
 fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
@@ -908,7 +903,6 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Standings Card
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -927,14 +921,12 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // SECTION 13: DESIGNATED DEPOSIT ACCOUNTS (CBE & TELEBIRR)
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = ImperialBlue, fontSize = 13.sp)
                 Text("Deposit to either account and paste the confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 1. CBE ACCOUNT
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -949,7 +941,6 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 2. TELEBIRR ACCOUNT
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
@@ -966,7 +957,6 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // SECTION 14: SMS PROOF
         OutlinedTextField(
             value = smsText, onValueChange = { smsText = it },
             label = { Text("Paste CBE or Telebirr SMS Proof here") },
@@ -1047,7 +1037,7 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int) {
             colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(Icons.Filled.ArrowUpward, null)
+            Icon(Icons.Filled.Check, null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("REQUEST WITHDRAWAL (MIN 200 ETB)", fontWeight = FontWeight.Bold)
         }
@@ -1183,7 +1173,7 @@ fun DriverProfileScreen(
     ) {
         Spacer(modifier = Modifier.height(10.dp))
         Box(contentAlignment = Alignment.BottomEnd) {
-            Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
+            Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
             if (status == "VERIFIED") {
                 Box(modifier = Modifier.background(EmeraldGreen, CircleShape).padding(4.dp)) {
                     Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp), tint = Color.White)
