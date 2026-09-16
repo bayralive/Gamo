@@ -4,6 +4,8 @@ on:
   push:
     branches: [ main, master ]
 
+# Force trigger timestamp: Wed Sep 16 11:22:35 EAT 2026
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,20 +38,10 @@ jobs:
         fi
 
         echo "Signing Customer App Bundle..."
-        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore keystore.jks \
-          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
-          -keypass "$KEYPASS" \
-          apps/customer-app/build/outputs/bundle/release/*.aab \
-          "${{ secrets.RELEASE_ALIAS }}"
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256           -keystore keystore.jks           -storepass "${{ secrets.RELEASE_PASSWORD }}"           -keypass "$KEYPASS"           apps/customer-app/build/outputs/bundle/release/*.aab           "${{ secrets.RELEASE_ALIAS }}"
 
         echo "Signing Driver App Bundle..."
-        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore keystore.jks \
-          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
-          -keypass "$KEYPASS" \
-          apps/driver-app/build/outputs/bundle/release/*.aab \
-          "${{ secrets.RELEASE_ALIAS }}"
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256           -keystore keystore.jks           -storepass "${{ secrets.RELEASE_PASSWORD }}"           -keypass "$KEYPASS"           apps/driver-app/build/outputs/bundle/release/*.aab           "${{ secrets.RELEASE_ALIAS }}"
 
     # ✅ 3. VERIFY SIGNATURES
     - name: Verify Both AAB Signatures
