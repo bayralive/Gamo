@@ -62,6 +62,8 @@ import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.*
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -265,7 +267,7 @@ fun DriverAppRoot() {
 }
 
 // ==========================================
-// 1. DRIVER AUTH SCREEN (GOOGLE + PASSWORD + RECOVERY)
+// 1. DRIVER AUTH SCREEN
 // ==========================================
 @Composable
 fun DriverAuthScreen(
@@ -485,7 +487,7 @@ fun DriverAuthScreen(
 }
 
 // ==========================================
-// DRIVER PASSWORD RECOVERY (TELEGRAM GATEWAY)
+// DRIVER PASSWORD RECOVERY
 // ==========================================
 @Composable
 fun DriverPasswordRecoveryView(onBack: () -> Unit) {
