@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationCompat
+import coil.compose.AsyncImage
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -267,7 +268,7 @@ fun DriverAppRoot() {
 }
 
 // ==========================================
-// 1. DRIVER AUTH SCREEN
+// 1. DRIVER AUTH SCREEN (GOOGLE SECURE ONBOARDING)
 // ==========================================
 @Composable
 fun DriverAuthScreen(
@@ -281,6 +282,8 @@ fun DriverAuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var authMode by remember { mutableStateOf("CHOICE") }
+    var googlePhotoUrl by remember { mutableStateOf("") }
+    var googleEmail by remember { mutableStateOf("") }
 
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -296,7 +299,10 @@ fun DriverAuthScreen(
             val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
             if (account != null) {
                 name = account.displayName ?: "Driver"
-                password = "google_verified"
+                googleEmail = account.email ?: ""
+                googlePhotoUrl = account.photoUrl?.toString() ?: ""
+                
+                // Switch directly to secure profile completion!
                 authMode = "GOOGLE_PHONE"
             }
         } catch (e: Exception) {
@@ -327,7 +333,7 @@ fun DriverAuthScreen(
                     modifier = Modifier.fillMaxWidth().height(55.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Filled.Call, contentDescription = null, tint = Color.Red)
+                    Icon(Icons.Filled.Email, contentDescription = null, tint = Color.Red)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
@@ -379,7 +385,7 @@ fun DriverAuthScreen(
                     Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
                     onClick = {
@@ -426,9 +432,19 @@ fun DriverAuthScreen(
             }
 
             "GOOGLE_PHONE" -> {
+                if (googlePhotoUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = googlePhotoUrl,
+                        contentDescription = "Profile",
+                        modifier = Modifier.size(72.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 Text("✓ Google Account Linked", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Welcome, $name", color = Color.White, fontWeight = FontWeight.Medium)
-                Text("Enter your phone number to complete fleet setup.", color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Please secure your account below.", color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -439,19 +455,42 @@ fun DriverAuthScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Create a Password", color = Color.LightGray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
                     onClick = {
-                        if (phone.length >= 9) {
+                        if (phone.length >= 9 && password.length >= 4) {
                             isLoading = true
                             val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name)
                             driverRef.addListenerForSingleValueEvent(object : ValueEventListener {
                                 override fun onDataChange(s: DataSnapshot) {
                                     isLoading = false
-                                    if (!s.exists()) {
+                                    if (s.exists()) {
+                                        // Update existing account with new password and phone
+                                        driverRef.child("password").setValue(password)
+                                        driverRef.child("phone").setValue(phone)
+                                        driverRef.child("email").setValue(googleEmail)
+                                        driverRef.child("photoUrl").setValue(googlePhotoUrl)
+                                    } else {
+                                        // Create entirely new account
                                         val initialData = mapOf(
-                                            "name" to name, "phone" to phone, "password" to "google_verified",
+                                            "name" to name, "phone" to phone, "email" to googleEmail, "photoUrl" to googlePhotoUrl,
+                                            "password" to password,
                                             "status" to "UNVERIFIED", "vehicleType" to null, "carPlate" to null,
                                             "rideCount" to 0, "balance" to 0, "debt" to 0, "credit" to 0,
                                             "rating" to 5.0, "reviewCount" to 0,
@@ -464,6 +503,8 @@ fun DriverAuthScreen(
                                 }
                                 override fun onCancelled(e: DatabaseError) { isLoading = false }
                             })
+                        } else {
+                            Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show()
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(55.dp),
@@ -471,7 +512,7 @@ fun DriverAuthScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
                 ) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp))
-                    else Text("COMPLETE FLEET REGISTRATION", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -487,7 +528,7 @@ fun DriverAuthScreen(
 }
 
 // ==========================================
-// DRIVER PASSWORD RECOVERY
+// DRIVER PASSWORD RECOVERY (TELEGRAM GATEWAY)
 // ==========================================
 @Composable
 fun DriverPasswordRecoveryView(onBack: () -> Unit) {
@@ -1265,6 +1306,7 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 // ==========================================
 // 17-21. DRIVER WALLET & WITHDRAWAL
 // ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriverWalletScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
@@ -1503,9 +1545,6 @@ fun ProfileRow(label: String, value: String) {
     }
 }
 
-// ==========================================
-// 22. RIDE HISTORY
-// ==========================================
 @Composable
 fun DriverRideHistoryScreen(driverName: String) {
     var history by remember { mutableStateOf(listOf<DataSnapshot>()) }
@@ -1549,9 +1588,6 @@ fun DriverRideHistoryScreen(driverName: String) {
     }
 }
 
-// ==========================================
-// BACKGROUND BEACON SERVICE
-// ==========================================
 class ImmortalBeaconService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
@@ -1574,9 +1610,6 @@ class ImmortalBeaconService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 }
 
-// ==========================================
-// FIREBASE CLOUD MESSAGING
-// ==========================================
 class BayraMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
