@@ -62,7 +62,6 @@ import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -279,7 +278,7 @@ fun DriverAuthScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
-    var authMode by remember { mutableStateOf("CHOICE") } // "CHOICE", "MANUAL", "GOOGLE_PHONE"
+    var authMode by remember { mutableStateOf("CHOICE") }
 
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -316,7 +315,6 @@ fun DriverAuthScreen(
 
         when (authMode) {
             "CHOICE" -> {
-                // 1. GOOGLE ONE-TAP BUTTON
                 Button(
                     onClick = {
                         googleSignInClient.signOut().addOnCompleteListener {
@@ -327,14 +325,13 @@ fun DriverAuthScreen(
                     modifier = Modifier.fillMaxWidth().height(55.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Filled.Email, contentDescription = null, tint = Color.Red)
+                    Icon(Icons.Filled.Call, contentDescription = null, tint = Color.Red)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 2. MANUAL LOGIN BUTTON
                 Button(
                     onClick = { authMode = "MANUAL" },
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
@@ -526,7 +523,6 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$phone/code").setValue(generatedPin)
 
                         scope.launch(Dispatchers.IO) {
-                            var isSuccess = false
                             try {
                                 val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
                                 val conn = url.openConnection() as HttpURLConnection
@@ -535,7 +531,7 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
                                 conn.doOutput = true
                                 val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
                                 conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                                if (conn.responseCode in 200..299) isSuccess = true
+                                conn.responseCode
                             } catch (e: Exception) {}
 
                             try {
@@ -585,15 +581,12 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
                         FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$phone/code").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
                                 if (s.value?.toString() == code || code == "123456") {
-                                    // Search for driver matching this phone to update password
                                     val driversRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers")
                                     driversRef.addListenerForSingleValueEvent(object : ValueEventListener {
                                         override fun onDataChange(ds: DataSnapshot) {
-                                            var found = false
                                             ds.children.forEach { child ->
                                                 if (child.child("phone").value?.toString() == phone || child.key == phone) {
                                                     child.ref.child("password").setValue(newPass)
-                                                    found = true
                                                 }
                                             }
                                             isLoading = false
@@ -1162,9 +1155,9 @@ fun RadarHubScreen(
     }
 }
 
-// =========================================================
+// ==========================================
 // 12, 13 & 14. DEBT CLEARANCE VAULT
-// =========================================================
+// ==========================================
 @Composable
 fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
