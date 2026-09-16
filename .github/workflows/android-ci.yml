@@ -22,32 +22,53 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # 🚀 1. COMPILE CUSTOMER APP (PLAY STORE BUNDLE)
-    - name: Build Customer App Bundle
-      run: ./gradlew :apps:customer-app:bundleRelease --stacktrace
+    # 🚀 1. COMPILE BOTH APPS (RELEASE BUNDLES)
+    - name: Build Customer & Driver App Bundles
+      run: |
+        ./gradlew :apps:customer-app:bundleRelease :apps:driver-app:bundleRelease --stacktrace
 
-    # 🚖 2. COMPILE DRIVER APP (PLAY STORE BUNDLE + DIRECT APK)
-    - name: Build Driver App Bundle & APK
-      run: ./gradlew :apps:driver-app:bundleRelease :apps:driver-app:assembleRelease --stacktrace || ./gradlew :apps:driver-app:bundleRelease --stacktrace
+    # 🔑 2. CRYPTOGRAPHICALLY SIGN BOTH AABs WITH JARSIGNER
+    - name: Sign Both AABs with Keystore
+      run: |
+        KEYPASS="${{ secrets.RELEASE_KEY_PASSWORD }}"
+        if [ -z "$KEYPASS" ]; then
+          KEYPASS="${{ secrets.RELEASE_PASSWORD }}"
+        fi
 
-    # 📦 3. UPLOAD CUSTOMER AAB
-    - name: Upload Customer App Bundle
+        echo "Signing Customer App Bundle..."
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore keystore.jks \
+          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
+          -keypass "$KEYPASS" \
+          apps/customer-app/build/outputs/bundle/release/*.aab \
+          "${{ secrets.RELEASE_ALIAS }}"
+
+        echo "Signing Driver App Bundle..."
+        jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore keystore.jks \
+          -storepass "${{ secrets.RELEASE_PASSWORD }}" \
+          -keypass "$KEYPASS" \
+          apps/driver-app/build/outputs/bundle/release/*.aab \
+          "${{ secrets.RELEASE_ALIAS }}"
+
+    # ✅ 3. VERIFY SIGNATURES
+    - name: Verify Both AAB Signatures
+      run: |
+        echo "Verifying Customer App..."
+        jarsigner -verify apps/customer-app/build/outputs/bundle/release/*.aab
+        echo "Verifying Driver App..."
+        jarsigner -verify apps/driver-app/build/outputs/bundle/release/*.aab
+
+    # 📦 4. UPLOAD SIGNED CUSTOMER APP BUNDLE
+    - name: Upload Signed Customer App Bundle
       uses: actions/upload-artifact@v4
       with:
         name: customer-app-release-aab
         path: apps/customer-app/build/outputs/bundle/release/*.aab
 
-    # 📦 4. UPLOAD DRIVER AAB (FOR GOOGLE PLAY)
-    - name: Upload Driver App Bundle
+    # 📦 5. UPLOAD SIGNED DRIVER APP BUNDLE (GOOGLE PLAY READY)
+    - name: Upload Signed Driver App Bundle
       uses: actions/upload-artifact@v4
       with:
         name: driver-app-release-aab
         path: apps/driver-app/build/outputs/bundle/release/*.aab
-
-    # 📲 5. UPLOAD DIRECT INSTALLABLE DRIVER APK
-    - name: Upload Driver App APK (Direct Install)
-      uses: actions/upload-artifact@v4
-      with:
-        name: driver-app-release-apk
-        path: apps/driver-app/build/outputs/apk/release/*.apk
-      if: always()
