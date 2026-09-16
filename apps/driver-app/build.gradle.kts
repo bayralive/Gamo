@@ -11,8 +11,8 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.31.6"
+        versionCode = 7
+        versionName = "2.31.7"
     }
 
     buildTypes {
