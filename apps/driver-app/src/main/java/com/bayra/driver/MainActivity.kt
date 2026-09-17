@@ -3,6 +3,7 @@
 package com.bayra.driver
 
 import android.Manifest
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -220,30 +221,42 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+    var isGoogleConnecting by remember { mutableStateOf(false) }
     var authMode by rememberSaveable { mutableStateOf("CHOICE") }
     var googlePhotoUrl by rememberSaveable { mutableStateOf("") }
     var googleEmail by rememberSaveable { mutableStateOf("") }
 
-    val gso = remember { GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().requestProfile().build() }
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
     val googleSignInClient = remember { GoogleSignIn.getClient(ctx, gso) }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
-            if (account != null) {
-                name = account.displayName ?: "Driver"
-                googleEmail = account.email ?: ""
-                googlePhotoUrl = account.photoUrl?.toString() ?: ""
-                authMode = "GOOGLE_PHONE"
-            } else {
+        isGoogleConnecting = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
+                if (account != null) {
+                    name = account.displayName ?: "Driver"
+                    googleEmail = account.email ?: ""
+                    googlePhotoUrl = account.photoUrl?.toString() ?: ""
+                    authMode = "GOOGLE_PHONE" // 🔥 Smoothly shifts to phone/password setup!
+                } else {
+                    authMode = "CHOICE"
+                }
+            } catch (e: ApiException) {
+                Toast.makeText(ctx, "Google Auth Error: ${e.statusCode}", Toast.LENGTH_LONG).show()
+                authMode = "CHOICE"
+            } catch (e: Exception) {
                 authMode = "CHOICE"
             }
-        } catch (e: ApiException) {
-            Toast.makeText(ctx, "Google Auth Error: ${e.statusCode}", Toast.LENGTH_LONG).show()
+        } else {
+            // User dismissed or backed out
             authMode = "CHOICE"
-        } catch (e: Exception) { 
-            authMode = "CHOICE" 
         }
     }
 
@@ -256,10 +269,25 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
 
         when (authMode) {
             "CHOICE" -> {
-                Button(onClick = { googleSignInClient.signOut().addOnCompleteListener { googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Filled.Call, null, tint = Color.Red)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                // 1. GOOGLE BUTTON (NO RACE CONDITIONS, DEBOUNCED)
+                Button(
+                    onClick = {
+                        if (!isGoogleConnecting) {
+                            isGoogleConnecting = true
+                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isGoogleConnecting) {
+                        CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp))
+                    } else {
+                        Icon(Icons.Filled.Call, null, tint = Color.Red)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
@@ -269,30 +297,11 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                 }
             }
             "MANUAL" -> {
-                OutlinedTextField(
-                    value = name, 
-                    onValueChange = { name = it }, 
-                    label = { Text("Driver Full Name", color = Color.LightGray) }, 
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Driver Full Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = phone, 
-                    onValueChange = { phone = it }, 
-                    label = { Text("Phone Number", color = Color.LightGray) }, 
-                    modifier = Modifier.fillMaxWidth(), 
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                )
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = password, 
-                    onValueChange = { password = it }, 
-                    label = { Text("Password", color = Color.LightGray) }, 
-                    modifier = Modifier.fillMaxWidth(), 
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), 
-                    trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, 
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-                )
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
@@ -326,24 +335,12 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                 }
                 Text("✓ Google Account Linked", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Welcome, $name", color = Color.White, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Please secure your driver account below:", color = Color.LightGray, fontSize = 12.sp, textAlign = TextAlign.Center)
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(
-                    value = phone, 
-                    onValueChange = { phone = it }, 
-                    label = { Text("Phone Number", color = Color.LightGray) }, 
-                    modifier = Modifier.fillMaxWidth(), 
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                )
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = password, 
-                    onValueChange = { password = it }, 
-                    label = { Text("Create a Password", color = Color.LightGray) }, 
-                    modifier = Modifier.fillMaxWidth(), 
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), 
-                    trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, 
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-                )
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
                     if (phone.length >= 9 && password.length >= 4) {
