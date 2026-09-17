@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.bayra.driver"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bayra.driver"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 10
-        versionName = "2.31.10"
+        targetSdk = 36
+        versionCode = 12
+        versionName = "2.31.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
