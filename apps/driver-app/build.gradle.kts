@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "2.31.12"
+        versionCode = 13
+        versionName = "2.31.13"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -70,16 +70,14 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     
-    // 🔥 REQUIRED FOR UI ELEMENTS (Email Icon, Person Icon, etc)
+    // 🔥 ESSENTIAL UI ICONS & IMAGE LIBRARIES
     implementation("androidx.compose.material:material-icons-extended")
-
-    // 🔥 REQUIRED FOR GOOGLE SIGN IN
-    implementation("com.google.android.gms:play-services-auth:20.7.0")
-
-    // 🔥 REQUIRED FOR ASYNCIMAGE (Google Avatar)
     implementation("io.coil-kt:coil-compose:2.4.0")
 
-    // Firebase & Map
+    // 🔥 GOOGLE SIGN IN
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+
+    // 🔥 FIREBASE & MAPS
     implementation(platform("com.google.firebase:firebase-bom:32.2.0"))
     implementation("com.google.firebase:firebase-database-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
