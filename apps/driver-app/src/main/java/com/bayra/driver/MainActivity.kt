@@ -64,9 +64,7 @@ import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
@@ -195,7 +193,7 @@ fun DriverAppRoot() {
                 bottomBar = {
                     NavigationBar(containerColor = Color.Black) {
                         NavigationBarItem(selected = (currentTab == "RADAR"), onClick = { currentTab = "RADAR" }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar", color = ImperialWhite, fontSize = 11.sp) })
-                        NavigationBarItem(selected = (currentTab == "WALLET"), onClick = { currentTab = "WALLET" }, icon = { Icon(Icons.Filled.AccountBalanceWallet, null) }, label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) })
+                        NavigationBarItem(selected = (currentTab == "WALLET"), onClick = { currentTab = "WALLET" }, icon = { Icon(Icons.Filled.CheckCircle, null) }, label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) })
                         NavigationBarItem(selected = (currentTab == "PROFILE"), onClick = { currentTab = "PROFILE" }, icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Profile", color = ImperialWhite, fontSize = 11.sp) })
                         NavigationBarItem(selected = (currentTab == "HISTORY"), onClick = { currentTab = "HISTORY" }, icon = { Icon(Icons.Filled.List, null) }, label = { Text("Trips", color = ImperialWhite, fontSize = 11.sp) })
                     }
@@ -222,8 +220,6 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
-    
-    // Use rememberSaveable to guarantee the state survives the Google Intent!
     var authMode by rememberSaveable { mutableStateOf("CHOICE") }
     var googlePhotoUrl by rememberSaveable { mutableStateOf("") }
     var googleEmail by rememberSaveable { mutableStateOf("") }
@@ -241,14 +237,12 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                 googlePhotoUrl = account.photoUrl?.toString() ?: ""
                 authMode = "GOOGLE_PHONE"
             } else {
-                Toast.makeText(ctx, "Google account was null", Toast.LENGTH_SHORT).show()
                 authMode = "CHOICE"
             }
         } catch (e: ApiException) {
-            Toast.makeText(ctx, "Google Error: \${e.statusCode}", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Google Auth Error: ${e.statusCode}", Toast.LENGTH_LONG).show()
             authMode = "CHOICE"
         } catch (e: Exception) { 
-            Toast.makeText(ctx, "Error: \${e.message}", Toast.LENGTH_LONG).show()
             authMode = "CHOICE" 
         }
     }
@@ -263,7 +257,7 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
         when (authMode) {
             "CHOICE" -> {
                 Button(onClick = { googleSignInClient.signOut().addOnCompleteListener { googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Filled.Email, null, tint = Color.Red)
+                    Icon(Icons.Filled.Call, null, tint = Color.Red)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
@@ -275,11 +269,30 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                 }
             }
             "MANUAL" -> {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Driver Full Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(
+                    value = name, 
+                    onValueChange = { name = it }, 
+                    label = { Text("Driver Full Name", color = Color.LightGray) }, 
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(
+                    value = phone, 
+                    onValueChange = { phone = it }, 
+                    label = { Text("Phone Number", color = Color.LightGray) }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(
+                    value = password, 
+                    onValueChange = { password = it }, 
+                    label = { Text("Password", color = Color.LightGray) }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), 
+                    trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, 
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
                 TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
@@ -307,13 +320,30 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                 TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.LightGray) }
             }
             "GOOGLE_PHONE" -> {
-                if (googlePhotoUrl.isNotEmpty()) { AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop); Spacer(modifier = Modifier.height(8.dp)) }
+                if (googlePhotoUrl.isNotEmpty()) { 
+                    AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                    Spacer(modifier = Modifier.height(8.dp)) 
+                }
                 Text("✓ Google Account Linked", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Welcome, $name", color = Color.White, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(
+                    value = phone, 
+                    onValueChange = { phone = it }, 
+                    label = { Text("Phone Number", color = Color.LightGray) }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+                OutlinedTextField(
+                    value = password, 
+                    onValueChange = { password = it }, 
+                    label = { Text("Create a Password", color = Color.LightGray) }, 
+                    modifier = Modifier.fillMaxWidth(), 
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), 
+                    trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, 
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
                     if (phone.length >= 9 && password.length >= 4) {
@@ -323,7 +353,10 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             override fun onDataChange(s: DataSnapshot) {
                                 isLoading = false
                                 if (s.exists()) {
-                                    driverRef.child("password").setValue(password); driverRef.child("phone").setValue(phone); driverRef.child("email").setValue(googleEmail); driverRef.child("photoUrl").setValue(googlePhotoUrl)
+                                    driverRef.child("password").setValue(password)
+                                    driverRef.child("phone").setValue(phone)
+                                    driverRef.child("email").setValue(googleEmail)
+                                    driverRef.child("photoUrl").setValue(googlePhotoUrl)
                                 } else {
                                     val initialData = mapOf("name" to name, "phone" to phone, "email" to googleEmail, "photoUrl" to googlePhotoUrl, "password" to password, "status" to "UNVERIFIED", "imperialId" to "BT-${(10000..99999).random()}")
                                     driverRef.setValue(initialData)
@@ -332,7 +365,9 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             }
                             override fun onCancelled(e: DatabaseError) { isLoading = false }
                         })
-                    } else { Toast.makeText(ctx, "Please enter phone and a password.", Toast.LENGTH_SHORT).show() }
+                    } else { 
+                        Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show() 
+                    }
                 }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
