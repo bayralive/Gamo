@@ -12,21 +12,12 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.31.13"
+        versionCode = 15
+        versionName = "2.31.15"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
-        }
-    }
-
-    signingConfigs {
-        create("release") {
-            storeFile = file("../../keystore.jks")
-            storePassword = System.getenv("RELEASE_PASSWORD") ?: "dummy_pass"
-            keyAlias = System.getenv("RELEASE_ALIAS") ?: "dummy_alias"
-            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "dummy_pass"
         }
     }
 
@@ -37,7 +28,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
