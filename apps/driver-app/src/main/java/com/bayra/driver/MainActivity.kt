@@ -159,6 +159,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     var debt by remember { mutableStateOf(0) }
     var credit by remember { mutableStateOf(0) }
     var chosenVerificationPath by remember { mutableStateOf<String?>(null) }
+    var photoUrl by remember { mutableStateOf(prefs.getString("photoUrl", "") ?: "") }
     
     var currentTab by rememberSaveable { mutableStateOf("RADAR") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
@@ -211,6 +212,11 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     debt = s.child("debt").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
                     credit = s.child("credit").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
                     chosenVerificationPath = s.child("verificationPath").value?.toString()
+                    val pUrl = s.child("photoUrl").value?.toString() ?: ""
+                    if (pUrl.isNotEmpty()) {
+                        photoUrl = pUrl
+                        prefs.edit().putString("photoUrl", pUrl).apply()
+                    }
                 }
                 override fun onCancelled(e: DatabaseError) {}
             })
@@ -245,7 +251,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                 bottomBar = {
                     NavigationBar(containerColor = Color.Black) {
                         NavigationBarItem(selected = (currentTab == "RADAR"), onClick = { currentTab = "RADAR" }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar", color = ImperialWhite, fontSize = 11.sp) })
-                        NavigationBarItem(selected = (currentTab == "WALLET"), onClick = { currentTab = "WALLET" }, icon = { Icon(Icons.Filled.CheckCircle, null) }, label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) })
+                        NavigationBarItem(selected = (currentTab == "WALLET"), onClick = { currentTab = "WALLET" }, icon = { Icon(Icons.Filled.AccountBalanceWallet, null) }, label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) })
                         NavigationBarItem(selected = (currentTab == "PROFILE"), onClick = { currentTab = "PROFILE" }, icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Profile", color = ImperialWhite, fontSize = 11.sp) })
                         NavigationBarItem(selected = (currentTab == "HISTORY"), onClick = { currentTab = "HISTORY" }, icon = { Icon(Icons.Filled.List, null) }, label = { Text("Trips", color = ImperialWhite, fontSize = 11.sp) })
                     }
@@ -255,7 +261,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     when (currentTab) {
                         "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ", activity) }
                         "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
-                        "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
+                        "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, photoUrl, onVerifyClicked = { chosenVerificationPath = "VERIFY_NOW"; FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").setValue("VERIFY_NOW") }, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
                         "HISTORY" -> DriverRideHistoryScreen(dName, onBack = { currentTab = "RADAR" })
                     }
                 }
@@ -306,7 +312,7 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
         when (authMode) {
             "CHOICE" -> {
                 Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    if (isGoogleConnecting) CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Call, null, tint = Color.Red); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                    if (isGoogleConnecting) CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Email, null, tint = Color.Red); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
@@ -373,7 +379,7 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             }
                             override fun onCancelled(e: DatabaseError) { isLoading = false }
                         })
-                    } else Toast.makeText(ctx, "Please enter phone and a password.", Toast.LENGTH_SHORT).show() 
+                    } else Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show() 
                 }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
@@ -897,7 +903,7 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
 }
 
 @Composable
-fun DriverProfileScreen(name: String, phone: String, imperialId: String, status: String, vehicleType: String, plate: String, rating: Double, completedRides: Int, onBack: () -> Unit, onLogout: () -> Unit) {
+fun DriverProfileScreen(name: String, phone: String, imperialId: String, status: String, vehicleType: String, plate: String, rating: Double, completedRides: Int, photoUrl: String, onVerifyClicked: () -> Unit, onBack: () -> Unit, onLogout: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
@@ -905,14 +911,42 @@ fun DriverProfileScreen(name: String, phone: String, imperialId: String, status:
         }
         Spacer(modifier = Modifier.height(10.dp))
         Box(contentAlignment = Alignment.BottomEnd) {
-            Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
-            if (status == "VERIFIED") Box(modifier = Modifier.background(EmeraldGreen, CircleShape).padding(4.dp)) { Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp), tint = Color.White) }
+            if (photoUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = "Profile Picture",
+                    modifier = Modifier.size(90.dp).clip(CircleShape).background(Color.LightGray),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
+            }
+            if (status == "VERIFIED") {
+                Box(modifier = Modifier.background(EmeraldGreen, CircleShape).padding(4.dp)) {
+                    Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                }
+            }
         }
         Spacer(modifier = Modifier.height(10.dp))
         Text(name, fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Black)
         Text(phone, fontSize = 14.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
-        Surface(color = if (status == "VERIFIED") EmeraldGreen else ImperialRed, shape = RoundedCornerShape(8.dp)) { Text(text = if (status == "VERIFIED") "🛡️ VERIFIED DRIVER" else "⚠️ UNVERIFIED ($status)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) }
+        
+        if (status == "VERIFIED") {
+            Surface(color = EmeraldGreen, shape = RoundedCornerShape(8.dp)) { 
+                Text(text = "🛡️ VERIFIED DRIVER", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) 
+            }
+        } else {
+            Button(
+                onClick = onVerifyClicked,
+                colors = ButtonDefaults.buttonColors(containerColor = ImperialRed),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.height(35.dp)
+            ) {
+                Text(text = "⚠️ UNVERIFIED - TAP TO VERIFY", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
