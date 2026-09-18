@@ -126,7 +126,7 @@ fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status:
                 val url = URL("https://bayra-backend-eu.onrender.com/login-security-alert")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.apply { requestMethod = "POST"; setRequestProperty("Content-Type", "application/json; charset=UTF-8"); doOutput = true; connectTimeout = 8000 }
-                val body = JSONObject().apply { put("email", email); put("name", name); put("phone", phone); put("status", status); put("device", "${Build.MANUFACTURER} ${Build.MODEL}") }
+                val body = JSONObject().apply { put("email", email); put("name", name); put("phone", phone); put("status", status); put("device", "${Build.MANUFACTURER} ${Build.MODEL}"); put("appType", "DRIVER") }
                 conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 conn.responseCode
             } catch (e: Exception) {}
