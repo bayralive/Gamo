@@ -67,7 +67,6 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
@@ -137,7 +136,7 @@ fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status:
 @Composable
 fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean> = mutableStateOf(false)) {
     val ctx = LocalContext.current
-    val activity = ctx as? MainActivity
+    val activity = ctx as? Activity
     val prefs = remember { ctx.getSharedPreferences("bayra_driver_v231", Context.MODE_PRIVATE) }
     
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
@@ -163,21 +162,17 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean> = mutableStateOf(f
     var currentTab by rememberSaveable { mutableStateOf("RADAR") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
-    // 🔥 GLOBAL HARDWARE BACK HANDLER
     BackHandler {
         if (isRecoveringPassword) {
             isRecoveringPassword = false
         } else if (isAuth) {
             if (vehicleType.isNullOrEmpty() || carPlate.isNullOrEmpty()) {
-                // If stuck at vehicle gate, logging out is the only way back
                 isAuth = false
                 prefs.edit().clear().apply()
             } else if (driverStatus != "VERIFIED" && chosenVerificationPath == "VERIFY_NOW") {
-                // Returns to path choice
                 chosenVerificationPath = null
                 FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").removeValue()
             } else if (currentTab != "RADAR") {
-                // Returns to radar from other tabs
                 currentTab = "RADAR"
             } else {
                 val currentTime = System.currentTimeMillis()
@@ -257,7 +252,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean> = mutableStateOf(f
             ) { padding ->
                 Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                     when (currentTab) {
-                        "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ", activity) }
+                        "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ", activity as? MainActivity) }
                         "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
                         "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
                         "HISTORY" -> DriverRideHistoryScreen(dName, onBack = { currentTab = "RADAR" })
@@ -377,7 +372,7 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             }
                             override fun onCancelled(e: DatabaseError) { isLoading = false }
                         })
-                    } else Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show() 
+                    } else Toast.makeText(ctx, "Please enter phone and a password.", Toast.LENGTH_SHORT).show() 
                 }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
@@ -568,7 +563,9 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 OutlinedTextField(value = licenseNumber, onValueChange = { licenseNumber = it }, label = { Text("Driver License Number") }, modifier = Modifier.fillMaxWidth(), enabled = driverStatus != "PENDING_APPROVAL")
             }
         }
+
         Spacer(modifier = Modifier.height(20.dp))
+
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Step 2: Mandatory Interview Gateway", fontWeight = FontWeight.Bold, color = ImperialBlue)
@@ -579,7 +576,9 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 }
             }
         }
+
         Spacer(modifier = Modifier.height(28.dp))
+
         if (driverStatus != "PENDING_APPROVAL") {
             Button(onClick = {
                 if (nationalId.isNotEmpty() && licenseNumber.isNotEmpty()) {
@@ -817,7 +816,6 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
             Text("IMPERIAL VAULT", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
         }
-        Text("Authoritative Ledger & Withdrawals", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(start = 48.dp))
         Spacer(modifier = Modifier.height(20.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialBlue), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(22.dp)) {
