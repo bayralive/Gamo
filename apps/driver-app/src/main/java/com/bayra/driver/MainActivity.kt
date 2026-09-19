@@ -75,7 +75,6 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -84,8 +83,6 @@ val ImperialRed = Color(0xFFD50000)
 val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
 val GoldYellow = Color(0xFFFFB300)
-const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
-const val CHAT_ID = "5232430147"
 
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
@@ -140,9 +137,20 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     val activity = ctx as? MainActivity
     val prefs = remember { ctx.getSharedPreferences("bayra_driver_v231", Context.MODE_PRIVATE) }
     
-    // Google Sign Out Client
-    val gso = remember { GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().requestProfile().build() }
+    val gso = remember { 
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build() 
+    }
     val googleSignInClient = remember { GoogleSignIn.getClient(ctx, gso) }
+
+    fun performFullSignOut() {
+        prefs.edit().clear().apply()
+        googleSignInClient.signOut().addOnCompleteListener {
+            googleSignInClient.revokeAccess()
+        }
+    }
 
     var dName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var dPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
@@ -174,11 +182,10 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
         } else if (isAuth) {
             if (vehicleType.isNullOrEmpty() || carPlate.isNullOrEmpty()) {
                 isAuth = false
-                prefs.edit().clear().apply()
-                googleSignInClient.signOut()
-            } else if (driverStatus != "VERIFIED" && chosenVerificationPath == "VERIFY_NOW") {
-                chosenVerificationPath = null
-                FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").removeValue()
+                performFullSignOut()
+            } else if (chosenVerificationPath == "VERIFY_NOW") {
+                chosenVerificationPath = "TRIAL"
+                currentTab = "PROFILE"
             } else if (currentTab != "RADAR") {
                 currentTab = "RADAR"
             } else {
@@ -243,14 +250,20 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
         }
     } else {
         if (vehicleType.isNullOrEmpty() || carPlate.isNullOrEmpty()) {
-            VehicleGateScreen(driverName = dName, onBack = { isAuth = false; prefs.edit().clear().apply(); googleSignInClient.signOut() })
+            VehicleGateScreen(driverName = dName, onBack = { isAuth = false; performFullSignOut() })
+        } else if (driverStatus != "VERIFIED" && chosenVerificationPath == "CHOICE" && rideCount < 10) {
+            VerificationChoiceScreen(driverName = dName, onBack = { chosenVerificationPath = "TRIAL"; currentTab = "RADAR" })
         } else if (driverStatus != "VERIFIED" && (chosenVerificationPath == "VERIFY_NOW" || rideCount >= 10 || driverStatus == "PENDING_APPROVAL")) {
-            CommissioningPortalScreen(driverName = dName, driverStatus = driverStatus, rideCount = rideCount, imperialId = imperialId, onBack = { 
-                chosenVerificationPath = null
-                FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").removeValue()
-            })
-        } else if (driverStatus == "UNVERIFIED" && chosenVerificationPath == null && rideCount < 10) {
-            VerificationChoiceScreen(driverName = dName, onBack = { isAuth = false; prefs.edit().clear().apply(); googleSignInClient.signOut() })
+            CommissioningPortalScreen(
+                driverName = dName, 
+                driverStatus = driverStatus, 
+                rideCount = rideCount, 
+                imperialId = imperialId, 
+                onBack = { 
+                    chosenVerificationPath = "TRIAL"
+                    currentTab = "PROFILE"
+                }
+            )
         } else {
             val isDebtLocked = (debt - credit) >= 500
             Scaffold(
@@ -266,8 +279,8 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                 Box(modifier = Modifier.padding(padding).fillMaxSize()) {
                     when (currentTab) {
                         "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ", activity) }
-                        "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
-                        "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, photoUrl, onVerifyClicked = { chosenVerificationPath = "VERIFY_NOW"; FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").setValue("VERIFY_NOW") }, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply(); googleSignInClient.signOut() })
+                        "WALLET" -> DriverWalletScreen(dName, dPhone, debt, credit, onBack = { currentTab = "RADAR" })
+                        "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, photoUrl, onVerifyClicked = { chosenVerificationPath = "VERIFY_NOW" }, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; performFullSignOut() })
                         "HISTORY" -> DriverRideHistoryScreen(dName, onBack = { currentTab = "RADAR" })
                     }
                 }
@@ -277,7 +290,11 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
 }
 
 @Composable
-fun DriverAuthScreen(googleSignInClient: com.google.android.gms.auth.api.signin.GoogleSignInClient, onForgotPassword: () -> Unit, onSuccess: (String, String) -> Unit) {
+fun DriverAuthScreen(
+    googleSignInClient: com.google.android.gms.auth.api.signin.GoogleSignInClient,
+    onForgotPassword: () -> Unit,
+    onSuccess: (String, String) -> Unit
+) {
     val ctx = LocalContext.current
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -299,13 +316,22 @@ fun DriverAuthScreen(googleSignInClient: com.google.android.gms.auth.api.signin.
                     name = account.displayName ?: "Driver"
                     googleEmail = account.email ?: ""
                     googlePhotoUrl = account.photoUrl?.toString() ?: ""
+                    password = ""
                     authMode = "GOOGLE_PHONE"
                 } else authMode = "CHOICE"
             } catch (e: Exception) { authMode = "CHOICE" }
         } else authMode = "CHOICE"
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ImperialBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ImperialBlue)
+            .padding(28.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Image(painterResource(id = R.drawable.logo_driver), contentDescription = null, modifier = Modifier.size(130.dp))
         Spacer(modifier = Modifier.height(16.dp))
         Text("IMPERIAL GUARD", fontSize = 26.sp, fontWeight = FontWeight.Black, color = ImperialWhite)
@@ -314,97 +340,254 @@ fun DriverAuthScreen(googleSignInClient: com.google.android.gms.auth.api.signin.
 
         when (authMode) {
             "CHOICE" -> {
-                Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInClient.signOut().addOnCompleteListener { googleSignInLauncher.launch(googleSignInClient.signInIntent) } } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    if (isGoogleConnecting) CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Email, null, tint = Color.Red); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                Button(
+                    onClick = {
+                        if (!isGoogleConnecting) {
+                            isGoogleConnecting = true
+                            googleSignInClient.signOut().addOnCompleteListener {
+                                googleSignInClient.revokeAccess().addOnCompleteListener {
+                                    googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isGoogleConnecting) {
+                        CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp))
+                    } else {
+                        Icon(Icons.Filled.Email, null, tint = Color.Red)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Filled.Person, null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with Name & Password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Button(
+                    onClick = { authMode = "MANUAL"; password = "" },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Person, null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Log in with Name & Password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
+
             "MANUAL" -> {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Driver Full Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password", color = Color.LightGray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+                TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) {
+                    Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = {
-                    if (name.isNotEmpty() && phone.isNotEmpty() && password.isNotEmpty()) {
-                        isLoading = true
-                        val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name)
-                        driverRef.addListenerForSingleValueEvent(object : ValueEventListener {
-                            override fun onDataChange(s: DataSnapshot) {
-                                isLoading = false
-                                if (s.exists()) {
-                                    val dbPass = s.child("password").value?.toString() ?: ""
-                                    if (dbPass == password || password == "123456") { 
-                                        sendSecurityEmailTrigger(s.child("email").value?.toString() ?: "", name, phone, "SUCCESS")
-                                        onSuccess(name, s.child("phone").value?.toString() ?: phone) 
-                                    } else { 
-                                        sendSecurityEmailTrigger(s.child("email").value?.toString() ?: "", name, phone, "FAILED")
-                                        Toast.makeText(ctx, "Incorrect Password!", Toast.LENGTH_LONG).show() 
+                Button(
+                    onClick = {
+                        val trimmedName = name.trim()
+                        val trimmedPhone = phone.trim()
+                        if (trimmedName.isNotEmpty() && trimmedPhone.isNotEmpty() && password.isNotEmpty()) {
+                            isLoading = true
+                            val driversRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers")
+                            driversRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                                override fun onDataChange(ds: DataSnapshot) {
+                                    isLoading = false
+                                    var foundDriver: DataSnapshot? = null
+                                    for (child in ds.children) {
+                                        val cPhone = child.child("phone").value?.toString()?.trim() ?: ""
+                                        val cName = child.child("name").value?.toString()?.trim() ?: ""
+                                        if (child.key.equals(trimmedName, ignoreCase = true) ||
+                                            cName.equals(trimmedName, ignoreCase = true) ||
+                                            child.key == trimmedPhone || cPhone == trimmedPhone) {
+                                            foundDriver = child
+                                            break
+                                        }
                                     }
-                                } else {
-                                    val initialData = mapOf("name" to name, "phone" to phone, "password" to password, "status" to "UNVERIFIED", "imperialId" to "BT-${(10000..99999).random()}")
-                                    driverRef.setValue(initialData); sendSecurityEmailTrigger("", name, phone, "SUCCESS"); onSuccess(name, phone)
+
+                                    val targetDriver = foundDriver
+                                    if (targetDriver != null) {
+                                        val dbPass = targetDriver.child("password").value?.toString() ?: ""
+                                        if (dbPass.isNotEmpty()) {
+                                            if (dbPass == password) {
+                                                sendSecurityEmailTrigger(targetDriver.child("email").value?.toString() ?: "", trimmedName, trimmedPhone, "SUCCESS")
+                                                val resolvedName = targetDriver.child("name").value?.toString() ?: targetDriver.key ?: trimmedName
+                                                val resolvedPhone = targetDriver.child("phone").value?.toString() ?: trimmedPhone
+                                                onSuccess(resolvedName, resolvedPhone)
+                                            } else {
+                                                sendSecurityEmailTrigger(targetDriver.child("email").value?.toString() ?: "", trimmedName, trimmedPhone, "FAILED")
+                                                Toast.makeText(ctx, "Incorrect Password! Please enter your registered password.", Toast.LENGTH_LONG).show()
+                                            }
+                                        } else {
+                                            targetDriver.ref.child("password").setValue(password)
+                                            onSuccess(trimmedName, trimmedPhone)
+                                        }
+                                    } else {
+                                        val initialData = mapOf("name" to trimmedName, "phone" to trimmedPhone, "password" to password, "status" to "UNVERIFIED", "imperialId" to "BT-${(10000..99999).random()}")
+                                        driversRef.child(trimmedName).setValue(initialData)
+                                        sendSecurityEmailTrigger("", trimmedName, trimmedPhone, "SUCCESS")
+                                        onSuccess(trimmedName, trimmedPhone)
+                                    }
                                 }
-                            }
-                            override fun onCancelled(e: DatabaseError) { isLoading = false }
-                        })
-                    }
-                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
+                                override fun onCancelled(e: DatabaseError) { isLoading = false }
+                            })
+                        } else Toast.makeText(ctx, "Please fill in all fields.", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
+                ) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.LightGray) }
             }
+
             "GOOGLE_PHONE" -> {
-                if (googlePhotoUrl.isNotEmpty()) { AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop); Spacer(modifier = Modifier.height(8.dp)) }
+                if (googlePhotoUrl.isNotEmpty()) {
+                    AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 Text("✓ Google Account Linked", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Welcome, $name", color = Color.White, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone Number", color = Color.LightGray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create/Enter your Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Enter / Create Password", color = Color.LightGray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = {
-                    if (phone.length >= 9 && password.length >= 4) {
-                        isLoading = true
-                        val driverRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers").child(name)
-                        driverRef.addListenerForSingleValueEvent(object : ValueEventListener {
-                            override fun onDataChange(s: DataSnapshot) {
-                                isLoading = false
-                                if (s.exists()) {
-                                    val dbPass = s.child("password").value?.toString() ?: ""
-                                    if (dbPass == password) {
-                                        driverRef.child("phone").setValue(phone); driverRef.child("email").setValue(googleEmail); driverRef.child("photoUrl").setValue(googlePhotoUrl)
-                                        sendSecurityEmailTrigger(googleEmail, name, phone, "SUCCESS")
-                                        onSuccess(name, phone)
-                                    } else {
-                                        sendSecurityEmailTrigger(googleEmail, name, phone, "FAILED")
-                                        Toast.makeText(ctx, "Incorrect Password! Please enter your registered password.", Toast.LENGTH_LONG).show()
+                Button(
+                    onClick = {
+                        val trimmedPhone = phone.trim()
+                        val trimmedName = name.trim()
+                        if (trimmedPhone.length >= 9 && password.length >= 4) {
+                            isLoading = true
+                            val driversRef = FirebaseDatabase.getInstance(DB_URL).getReference("drivers")
+                            driversRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                                override fun onDataChange(ds: DataSnapshot) {
+                                    isLoading = false
+                                    var foundDriver: DataSnapshot? = null
+                                    for (child in ds.children) {
+                                        val cPhone = child.child("phone").value?.toString()?.trim() ?: ""
+                                        val cEmail = child.child("email").value?.toString()?.trim() ?: ""
+                                        val cName = child.child("name").value?.toString()?.trim() ?: ""
+
+                                        if (child.key == trimmedPhone || cPhone == trimmedPhone ||
+                                            (googleEmail.isNotEmpty() && cEmail.equals(googleEmail.trim(), ignoreCase = true)) ||
+                                            child.key.equals(trimmedName, ignoreCase = true) || cName.equals(trimmedName, ignoreCase = true)) {
+                                            foundDriver = child
+                                            break
+                                        }
                                     }
-                                } else {
-                                    val initialData = mapOf("name" to name, "phone" to phone, "email" to googleEmail, "photoUrl" to googlePhotoUrl, "password" to password, "status" to "UNVERIFIED", "imperialId" to "BT-${(10000..99999).random()}")
-                                    driverRef.setValue(initialData)
-                                    sendSecurityEmailTrigger(googleEmail, name, phone, "SUCCESS")
-                                    onSuccess(name, phone)
+
+                                    val targetDriver = foundDriver
+                                    if (targetDriver != null) {
+                                        val dbPass = targetDriver.child("password").value?.toString() ?: ""
+                                        if (dbPass.isNotEmpty()) {
+                                            if (dbPass == password) {
+                                                val updates = mutableMapOf<String, Any>()
+                                                if (googleEmail.isNotEmpty()) updates["email"] = googleEmail
+                                                if (googlePhotoUrl.isNotEmpty()) updates["photoUrl"] = googlePhotoUrl
+                                                if (trimmedPhone.isNotEmpty()) updates["phone"] = trimmedPhone
+                                                targetDriver.ref.updateChildren(updates)
+                                                
+                                                sendSecurityEmailTrigger(googleEmail, trimmedName, trimmedPhone, "SUCCESS")
+                                                val resolvedName = targetDriver.child("name").value?.toString() ?: targetDriver.key ?: trimmedName
+                                                val resolvedPhone = targetDriver.child("phone").value?.toString() ?: trimmedPhone
+                                                onSuccess(resolvedName, resolvedPhone)
+                                            } else {
+                                                sendSecurityEmailTrigger(googleEmail, trimmedName, trimmedPhone, "FAILED")
+                                                Toast.makeText(ctx, "Incorrect Password! Please enter your registered password.", Toast.LENGTH_LONG).show()
+                                            }
+                                        } else {
+                                            targetDriver.ref.child("password").setValue(password)
+                                            if (googleEmail.isNotEmpty()) targetDriver.ref.child("email").setValue(googleEmail)
+                                            if (googlePhotoUrl.isNotEmpty()) targetDriver.ref.child("photoUrl").setValue(googlePhotoUrl)
+                                            val resolvedName = targetDriver.child("name").value?.toString() ?: targetDriver.key ?: trimmedName
+                                            val resolvedPhone = targetDriver.child("phone").value?.toString() ?: trimmedPhone
+                                            onSuccess(resolvedName, resolvedPhone)
+                                        }
+                                    } else {
+                                        val initialData = mapOf(
+                                            "name" to trimmedName,
+                                            "phone" to trimmedPhone,
+                                            "email" to googleEmail,
+                                            "photoUrl" to googlePhotoUrl,
+                                            "password" to password,
+                                            "status" to "UNVERIFIED",
+                                            "imperialId" to "BT-${(10000..99999).random()}"
+                                        )
+                                        driversRef.child(trimmedName).setValue(initialData)
+                                        sendSecurityEmailTrigger(googleEmail, trimmedName, trimmedPhone, "SUCCESS")
+                                        onSuccess(trimmedName, trimmedPhone)
+                                    }
                                 }
-                            }
-                            override fun onCancelled(e: DatabaseError) { isLoading = false }
-                        })
-                    } else Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show() 
-                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
+
+                                override fun onCancelled(e: DatabaseError) {
+                                    isLoading = false
+                                    Toast.makeText(ctx, "Database error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            })
+                        } else {
+                            Toast.makeText(ctx, "Please enter phone and a 4+ character password.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(55.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)
+                ) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE"; googleSignInClient.signOut() }) { Text("Cancel", color = Color.LightGray) }
+                TextButton(
+                    onClick = {
+                        authMode = "CHOICE"
+                        password = ""
+                        googleSignInClient.signOut().addOnCompleteListener {
+                            googleSignInClient.revokeAccess()
+                        }
+                    }
+                ) {
+                    Text("Cancel", color = Color.LightGray)
+                }
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }) { Text("Need Fleet Registration Help? Contact Council", color = Color.LightGray, fontSize = 12.sp) }
+        TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }) {
+            Text("Need Fleet Registration Help? Contact Council", color = Color.LightGray, fontSize = 12.sp)
+        }
     }
 }
 
@@ -819,9 +1002,11 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () -> Unit) {
+fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credit: Int, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val balance = maxOf(0, credit - debt)
+    
     var showWithdrawModal by remember { mutableStateOf(false) }
     var withdrawAmount by remember { mutableStateOf("") }
     var selectedBank by remember { mutableStateOf("CBE") }
@@ -829,6 +1014,10 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
     var accountHolder by remember { mutableStateOf("") }
     var telegramCode by remember { mutableStateOf("") }
     var challengeGenerated by remember { mutableStateOf<String?>(null) }
+    
+    var showDepositModal by remember { mutableStateOf(false) }
+    var depositSms by remember { mutableStateOf("") }
+    var isSubmittingDeposit by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -848,9 +1037,17 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
+        
         Button(onClick = { showWithdrawModal = true }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(12.dp)) {
-            Icon(Icons.Filled.AccountBalanceWallet, null); Spacer(modifier = Modifier.width(8.dp)); Text("REQUEST WITHDRAWAL (MIN 200 ETB)", fontWeight = FontWeight.Bold)
+            Icon(Icons.Filled.AccountBalanceWallet, null); Spacer(modifier = Modifier.width(8.dp)); Text("REQUEST WITHDRAWAL (MIN 200 ETB)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Button(onClick = { showDepositModal = true }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(12.dp)) {
+            Icon(Icons.Filled.AddCircle, null, tint = Color.White); Spacer(modifier = Modifier.width(8.dp)); Text("DEPOSIT FUNDS TO ACCOUNT", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -860,6 +1057,57 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
                 Text("ገንዘብዎ በተጠቀሰው ሰዓት ገቢ ይሆናል", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ImperialBlue)
             }
         }
+    }
+
+    if (showDepositModal) {
+        AlertDialog(
+            onDismissRequest = { showDepositModal = false },
+            title = { Text("Deposit Funds", fontWeight = FontWeight.Bold, color = ImperialBlue) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = ImperialBlue, fontSize = 13.sp)
+                    Text("Deposit to either account and paste the confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFF1F5F9)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("1. Commercial Bank of Ethiopia (CBE)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1E3A8A))
+                            Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
+                            Text("Account No: 1000379893698", fontSize = 15.sp, fontWeight = FontWeight.Black, color = ImperialBlue)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color(0xFFF1F5F9)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("2. Telebirr Deposit", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0284C7))
+                            Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
+                            Text("Phone Number: 0928911665", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFF0284C7))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(value = depositSms, onValueChange = { depositSms = it }, label = { Text("Paste CBE or Telebirr SMS Proof") }, modifier = Modifier.fillMaxWidth().height(100.dp), shape = RoundedCornerShape(12.dp))
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (depositSms.length > 10) {
+                        isSubmittingDeposit = true
+                        FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending").push().setValue(
+                            mapOf("driverName" to driverName, "smsProof" to depositSms, "type" to "VOLUNTARY", "submittedAt" to System.currentTimeMillis())
+                        ).addOnCompleteListener {
+                            isSubmittingDeposit = false
+                            showDepositModal = false
+                            depositSms = ""
+                            Toast.makeText(ctx, "Deposit proof submitted! It will be reviewed shortly.", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        Toast.makeText(ctx, "Please paste the complete bank or Telebirr SMS.", Toast.LENGTH_SHORT).show()
+                    }
+                }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)) {
+                    if (isSubmittingDeposit) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp)) else Text("SUBMIT PROOF", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDepositModal = false }) { Text("Cancel") } }
+        )
     }
 
     if (showWithdrawModal) {
@@ -898,6 +1146,21 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
                             val generatedPin = (100000..999999).random().toString()
                             challengeGenerated = generatedPin
                             FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName/pendingChallenge").setValue(generatedPin)
+                            
+                            // API CALL TO SEND TELEGRAM MESSAGE
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val url = URL("https://bayra-backend-eu.onrender.com/api/web-send-pin")
+                                    val conn = url.openConnection() as HttpURLConnection
+                                    conn.requestMethod = "POST"
+                                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                    conn.doOutput = true
+                                    val body = JSONObject().put("phone", driverPhone).put("pin", generatedPin).toString()
+                                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                                    conn.responseCode
+                                } catch (e: Exception) {}
+                            }
+
                             Toast.makeText(ctx, "Verification code sent to @Walletassistantdriverbot", Toast.LENGTH_LONG).show()
                         } else Toast.makeText(ctx, "Min withdrawal is 200 ETB within available balance.", Toast.LENGTH_SHORT).show()
                     } else {
