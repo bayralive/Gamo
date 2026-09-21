@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.driver"
         minSdk = 24
         targetSdk = 36
-        versionCode = 47
-        versionName = "2.31.47"
+        versionCode = 48
+        versionName = "2.31.48"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
