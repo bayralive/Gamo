@@ -1058,7 +1058,7 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
                         if (amountNum in 200..balance && bankAccount.isNotEmpty() && accountHolder.isNotEmpty()) {
                             isSubmittingWithdrawal = true
                             val generatedPin = (100000..999999).random().toString()
-                            FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$driverPhone/withdrawCode").setValue(generatedPin).addOnCompleteListener {
+                            FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$driverPhone/code").setValue(generatedPin).addOnCompleteListener {
                                 challengeGenerated = generatedPin
                                 scope.launch(Dispatchers.IO) {
                                     try {
@@ -1076,7 +1076,7 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
                     } else {
                         isSubmittingWithdrawal = true
                         val cleanInput = telegramCode.replace("\\D".toRegex(), "")
-                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$driverPhone/withdrawCode").addListenerForSingleValueEvent(object : ValueEventListener {
+                        FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$driverPhone/code").addListenerForSingleValueEvent(object : ValueEventListener {
                             override fun onDataChange(s: DataSnapshot) {
                                 val validPin = s.value?.toString() ?: ""
                                 if (cleanInput == validPin || cleanInput == "123456" || cleanInput == challengeGenerated) {
