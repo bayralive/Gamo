@@ -12,8 +12,8 @@ android {
         applicationId = "com.bayra.customer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 46
-        versionName = "2.31.46"
+        versionCode = 49
+        versionName = "2.31.49"
         multiDexEnabled = true
     }
 

@@ -8,11 +8,14 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.ImageDecoder
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.provider.MediaStore
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -71,6 +74,7 @@ import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -90,9 +94,10 @@ enum class Tier(val label: String, val base: Double, val isHr: Boolean, val isCa
     C3_HR("C3 Hr", 500.0, true, true)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    private var triggerRecovery = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this))
@@ -102,13 +107,21 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION, 
             Manifest.permission.POST_NOTIFICATIONS
         ))
-        
-        // 🚀 DETECT DEEP LINK FROM EMAIL
-        val isDeepLinkRecovery = intent?.data?.let { uri ->
-            uri.path?.contains("reset-password") == true || uri.scheme == "bayra"
-        } ?: false
 
-        setContent { PassengerSuperApp(startInRecovery = isDeepLinkRecovery) }
+        triggerRecovery.value = checkRecoveryIntent(intent)
+        setContent { PassengerSuperApp(openRecoveryDirectly = triggerRecovery) }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (checkRecoveryIntent(intent)) triggerRecovery.value = true
+    }
+
+    private fun checkRecoveryIntent(i: Intent?): Boolean {
+        if (i == null) return false
+        return i.getBooleanExtra("recover", false) || i.getStringExtra("route") == "recovery" ||
+               i.data?.toString()?.contains("recover") == true || i.data?.toString()?.contains("reset-password") == true
     }
 }
 
@@ -127,7 +140,7 @@ class BayraMessagingService : FirebaseMessagingService() {
     }
 }
 
-fun sendSecurityEmailTrigger(email: String, name: String, status: String) {
+fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status: String) {
     if (email.contains("@") && !email.contains("example.com")) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -142,8 +155,10 @@ fun sendSecurityEmailTrigger(email: String, name: String, status: String) {
                 val body = JSONObject().apply {
                     put("email", email)
                     put("name", name)
+                    put("phone", phone)
                     put("status", status)
                     put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
+                    put("appType", "PASSENGER")
                 }
                 conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 conn.responseCode
@@ -154,23 +169,32 @@ fun sendSecurityEmailTrigger(email: String, name: String, status: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PassengerSuperApp(startInRecovery: Boolean = false) {
+fun PassengerSuperApp(openRecoveryDirectly: MutableState<Boolean> = mutableStateOf(false)) {
     val ctx = LocalContext.current
     val activity = ctx as? ComponentActivity
     val prefs = remember { ctx.getSharedPreferences("bayra_p_v231", Context.MODE_PRIVATE) }
     
+    val gso = remember { GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).requestEmail().requestProfile().build() }
+    val googleSignInClient = remember { GoogleSignIn.getClient(ctx, gso) }
+
     var isDarkMode by rememberSaveable { mutableStateOf(prefs.getBoolean("dark", false)) }
     var pName by rememberSaveable { mutableStateOf(prefs.getString("n", "") ?: "") }
     var pPhone by rememberSaveable { mutableStateOf(prefs.getString("p", "") ?: "") }
     var pEmail by rememberSaveable { mutableStateOf(prefs.getString("e", "") ?: "") }
     var pPhoto by rememberSaveable { mutableStateOf(prefs.getString("photo", "") ?: "") }
     var pPass by rememberSaveable { mutableStateOf(prefs.getString("pw", "") ?: "") }
-    var isAuth by remember { mutableStateOf(if (startInRecovery) false else prefs.getBoolean("auth", false)) }
+    var isAuth by remember { mutableStateOf(if (openRecoveryDirectly.value) false else prefs.getBoolean("auth", false)) }
     
     var isCheckingLogin by remember { mutableStateOf(false) }
-    
-    // 🎯 OPENS IMAGE 1 DIRECTLY IF CLICKED FROM EMAIL
-    var isRecoveringPassword by rememberSaveable { mutableStateOf(startInRecovery) }
+    var isRecoveringPassword by rememberSaveable { mutableStateOf(openRecoveryDirectly.value) }
+
+    LaunchedEffect(openRecoveryDirectly.value) {
+        if (openRecoveryDirectly.value) {
+            isAuth = false
+            isRecoveringPassword = true
+            openRecoveryDirectly.value = false
+        }
+    }
 
     var pickupPt by remember { mutableStateOf<GeoPoint?>(null) }
     var destPt by remember { mutableStateOf<GeoPoint?>(null) }
@@ -242,6 +266,7 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                 } else {
                     LoginView(
                         name = pName, phone = pPhone, email = pEmail, isChecking = isCheckingLogin,
+                        googleSignInClient = googleSignInClient,
                         onForgotPassword = { isRecoveringPassword = true }
                     ) { n, p, e, photo, pw -> 
                         val formattedN = n.ifBlank { "Passenger" }
@@ -261,6 +286,12 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
 
                                     if (storedPw == pw || pw == "google_verified") {
                                         val existingPhoto = s.child("photoUrl").value?.toString() ?: formattedPhoto
+                                        
+                                        if (pw != "google_verified") {
+                                            FirebaseDatabase.getInstance(DB_URL).getReference("users/$formattedP/email").setValue(formattedE)
+                                            FirebaseDatabase.getInstance(DB_URL).getReference("users/$formattedP/photoUrl").setValue(formattedPhoto)
+                                        }
+
                                         prefs.edit().clear().apply()
                                         prefs.edit().putString("n", existingName)
                                             .putString("p", formattedP)
@@ -275,9 +306,9 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                                         pPass = pw
                                         isAuth = true
 
-                                        sendSecurityEmailTrigger(existingEmail, existingName, "SUCCESS")
+                                        sendSecurityEmailTrigger(existingEmail, existingName, formattedP, "SUCCESS")
                                     } else {
-                                        sendSecurityEmailTrigger(existingEmail, existingName, "FAILED")
+                                        sendSecurityEmailTrigger(existingEmail, existingName, formattedP, "FAILED")
                                         Toast.makeText(ctx, "Incorrect Password! Try again.", Toast.LENGTH_LONG).show()
                                     }
                                 } else {
@@ -305,7 +336,7 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                                     pPass = pw
                                     isAuth = true
 
-                                    sendSecurityEmailTrigger(formattedE, formattedN, "SUCCESS")
+                                    sendSecurityEmailTrigger(formattedE, formattedN, formattedP, "SUCCESS")
                                     Toast.makeText(ctx, "Welcome to Bayra Travel!", Toast.LENGTH_SHORT).show()
                                 }
                                 isCheckingLogin = false
@@ -339,21 +370,22 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                             NavigationDrawerItem(label = { Text("Map") }, selected = currentView == "MAP", onClick = { currentView = "MAP"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Home, null) })
                             NavigationDrawerItem(label = { Text("History") }, selected = currentView == "ORDERS", onClick = { currentView = "ORDERS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.List, null) })
                             NavigationDrawerItem(label = { Text("Notifications") }, selected = currentView == "NOTIFICATIONS", onClick = { currentView = "NOTIFICATIONS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
-                            NavigationDrawerItem(label = { Text("Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
+                            NavigationDrawerItem(label = { Text("Profile & Settings") }, selected = currentView == "SETTINGS", onClick = { currentView = "SETTINGS"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Settings, null) })
                             NavigationDrawerItem(label = { Text("About Us") }, selected = currentView == "ABOUT", onClick = { currentView = "ABOUT"; scope.launch { drawerState.close() } }, icon = { Icon(Icons.Filled.Info, null) })
                             Divider()
                             NavigationDrawerItem(label = { Text("Logout") }, selected = false, onClick = { 
                                 prefs.edit().clear().apply()
                                 isAuth = false 
+                                googleSignInClient.signOut()
                             }, icon = { Icon(Icons.Filled.ExitToApp, null) })
                         }
                     }
                 ) {
                     Scaffold(topBar = { 
-                            SmallTopAppBar(
+                            TopAppBar(
                                 title = { Text("Bayra Travel", color = Color.White, fontWeight = FontWeight.Black) },
                                 navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) } },
-                                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = IMPERIAL_BLUE)
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = IMPERIAL_BLUE)
                             )
                         }
                     ) { padding ->
@@ -362,7 +394,11 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                                 "MAP" -> BookingHub(name = pName, email = pEmail, phone = pPhone, prefs = prefs, pickupPt = pickupPt, destPt = destPt, selectedTier = selectedTier, step = step, hrCount = hrCount, onPointChange = { p, d, s, t, h -> pickupPt = p; destPt = d; step = s; selectedTier = t; hrCount = h })
                                 "ORDERS" -> HistoryPage(name = pName)
                                 "NOTIFICATIONS" -> NotificationPage()
-                                "SETTINGS" -> SettingsPage(isDarkMode = isDarkMode) { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }
+                                "SETTINGS" -> SettingsPage(name = pName, phone = pPhone, email = pEmail, photoUrl = pPhoto, isDarkMode = isDarkMode, onToggle = { isDarkMode = it; prefs.edit().putBoolean("dark", it).apply() }) { newName, newPhoto ->
+                                    pName = newName
+                                    pPhoto = newPhoto
+                                    prefs.edit().putString("n", newName).putString("photo", newPhoto).apply()
+                                }
                                 "ABOUT" -> AboutUsPage()
                             }
                         }
@@ -370,7 +406,6 @@ fun PassengerSuperApp(startInRecovery: Boolean = false) {
                 }
             }
 
-            // 🔥 IN-APP POPUP DIALOG
             if (showPopup && popupData != null) {
                 AlertDialog(
                     onDismissRequest = {
@@ -454,37 +489,25 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                                 FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$phone/code").setValue(generatedPin)
                                 
                                 scope.launch(Dispatchers.IO) {
-                                    var isSuccess = false
                                     try {
-                                        val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
+                                        val url = URL("https://bayra-backend-eu.onrender.com/api/web-send-pin")
                                         val conn = url.openConnection() as HttpURLConnection
                                         conn.requestMethod = "POST"
                                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                                        conn.connectTimeout = 15000 
-                                        conn.readTimeout = 15000
                                         conn.doOutput = true
                                         val body = JSONObject().put("phone", phone).put("pin", generatedPin).toString()
-                                        val os = conn.outputStream
-                                        os.write(body.toByteArray(Charsets.UTF_8))
-                                        os.flush() 
-                                        os.close()
-                                        if (conn.responseCode in 200..299) isSuccess = true
+                                        conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                                        conn.responseCode
                                     } catch(e: Exception) {}
 
                                     try {
                                         val msg = "🚨 PASSWORD RECOVERY\nPhone: $phone\nPIN: $generatedPin"
-                                        val encodedMsg = URLEncoder.encode(msg, "UTF-8")
-                                        URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=$encodedMsg").readText()
+                                        URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}").readText()
                                     } catch(e: Exception) {}
 
                                     withContext(Dispatchers.Main) {
                                         isLoading = false
                                         step = "PIN" 
-                                        if (isSuccess) {
-                                            Toast.makeText(ctx, "Code sent via Official Telegram Gateway!", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            Toast.makeText(ctx, "Gateway delayed. Code sent to Bayra Support.", Toast.LENGTH_LONG).show()
-                                        }
                                     }
                                 }
                             } else {
@@ -495,7 +518,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                         override fun onCancelled(e: DatabaseError) { isLoading = false }
                     })
                 }
-            }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp)) {
+            }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SEND CODE VIA TELEGRAM", fontWeight = FontWeight.Bold)
             }
         } else {
@@ -518,7 +541,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
             
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = {
-                if (code.length >= 4 && newPass.length > 3) {
+                if (code.length >= 4 && newPass.length >= 4) {
                     isLoading = true
                     FirebaseDatabase.getInstance(DB_URL).getReference("verifications/$phone/code").addListenerForSingleValueEvent(object: ValueEventListener {
                         override fun onDataChange(s: DataSnapshot) {
@@ -534,7 +557,7 @@ fun PasswordRecoveryView(onBack: () -> Unit) {
                         override fun onCancelled(e: DatabaseError) { isLoading = false }
                     })
                 }
-            }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp)) {
+            }, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SECURE NEW PASSWORD", fontWeight = FontWeight.Bold)
             }
 
@@ -555,7 +578,8 @@ fun LoginView(
     name: String, 
     phone: String, 
     email: String, 
-    isChecking: Boolean, 
+    isChecking: Boolean,
+    googleSignInClient: com.google.android.gms.auth.api.signin.GoogleSignInClient,
     onForgotPassword: () -> Unit, 
     onLogin: (String, String, String, String, String) -> Unit 
 ) {
@@ -565,31 +589,25 @@ fun LoginView(
     var photoUrl by remember { mutableStateOf("") }
     var pw by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var loginStep by remember { mutableStateOf("CHOICE") } 
+    var loginStep by rememberSaveable { mutableStateOf("CHOICE") } 
+    var isGoogleConnecting by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
-    
-    val gso = remember {
-        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestProfile()
-            .build()
-    }
-    val googleSignInClient = remember { GoogleSignIn.getClient(ctx, gso) }
 
     val googleSignInLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
-            if (account != null) {
-                e = account.email ?: ""
-                n = account.displayName ?: "Passenger"
-                photoUrl = account.photoUrl?.toString() ?: ""
-                pw = "google_verified"
-                loginStep = "GOOGLE_PHONE"
-            }
-        } catch (ex: ApiException) {
-            loginStep = "CHOICE"
-        }
+        isGoogleConnecting = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account: GoogleSignInAccount? = task.getResult(ApiException::class.java)
+                if (account != null) {
+                    e = account.email ?: ""
+                    n = account.displayName ?: "Passenger"
+                    photoUrl = account.photoUrl?.toString() ?: ""
+                    pw = "google_verified"
+                    loginStep = "GOOGLE_PHONE"
+                } else loginStep = "CHOICE"
+            } catch (ex: Exception) { loginStep = "CHOICE" }
+        } else loginStep = "CHOICE"
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -601,17 +619,23 @@ fun LoginView(
             "CHOICE" -> {
                 Button(
                     onClick = {
-                        googleSignInClient.signOut().addOnCompleteListener {
-                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                        if (!isGoogleConnecting) {
+                            isGoogleConnecting = true
+                            googleSignInClient.signOut().addOnCompleteListener { 
+                                googleSignInClient.revokeAccess()
+                                googleSignInLauncher.launch(googleSignInClient.signInIntent) 
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)),
                     modifier = Modifier.fillMaxWidth().height(55.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    if (isGoogleConnecting) CircularProgressIndicator(color = IMPERIAL_BLUE, modifier = Modifier.size(22.dp)) else {
+                        Icon(Icons.Filled.Email, contentDescription = "Google", tint = Color.Red)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -631,7 +655,7 @@ fun LoginView(
             "MANUAL" -> {
                 OutlinedTextField(n, { n = it }, label = { Text("Registry Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(e, { e = it }, label = { Text("Email (Required for Online Payment)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
                 Spacer(modifier = Modifier.height(16.dp))
@@ -657,7 +681,7 @@ fun LoginView(
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Button(onClick = { 
-                    if(n.length > 2 && p.length > 8 && e.contains("@") && pw.length > 3 && !isChecking) {
+                    if(n.length > 2 && p.length >= 9 && pw.length >= 4 && !isChecking) {
                         onLogin(n, p, e, "", pw)
                     } 
                 }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
@@ -685,27 +709,29 @@ fun LoginView(
                     }
                     Text("✓ Google Account Linked", color = Color(0xFF00A859), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text("Welcome, $n", fontWeight = FontWeight.Medium, color = Color.DarkGray)
-                    Text("Please enter your phone number to complete setup.", color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                    Text("Please secure your account below.", color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                 }
                 
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                OutlinedTextField(p, { p = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(pw, { pw = it }, label = { Text("Create/Enter your Password") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = IMPERIAL_BLUE, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 Spacer(modifier = Modifier.height(24.dp))
                 
                 Button(onClick = { 
-                    if(p.length > 8 && !isChecking) {
+                    if(p.length >= 9 && pw.length >= 4 && !isChecking) {
                         onLogin(n, p, e, photoUrl, pw)
-                    } 
+                    } else { Toast.makeText(ctx, "Enter valid phone and 4+ character password", Toast.LENGTH_SHORT).show() }
                 }, modifier = Modifier.fillMaxWidth().height(65.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE), shape = RoundedCornerShape(16.dp)) { 
                     if (isChecking) {
                         CircularProgressIndicator(color = Color.White)
                     } else {
-                        Text("COMPLETE REGISTRATION", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
+                        Text("SECURE ACCOUNT", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) 
                     }
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
-                TextButton(onClick = { loginStep = "CHOICE" }) { Text("Cancel", color = Color.Gray) }
+                TextButton(onClick = { loginStep = "CHOICE"; googleSignInClient.signOut().addOnCompleteListener { googleSignInClient.revokeAccess() } }) { Text("Cancel", color = Color.Gray) }
             }
         }
     }
@@ -963,16 +989,76 @@ fun NotificationPage() {
 }
 
 @Composable
-fun SettingsPage(isDarkMode: Boolean, onToggle: (Boolean) -> Unit) {
+fun SettingsPage(name: String, phone: String, email: String, photoUrl: String, isDarkMode: Boolean, onToggle: (Boolean) -> Unit, onProfileUpdated: (String, String) -> Unit) {
     val ctx = LocalContext.current
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.Start) {
-        Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Dark Mode Appearance"); Switch(checked = isDarkMode, onCheckedChange = onToggle) }
-        Divider(modifier = Modifier.padding(vertical = 16.dp))
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { 
-            Text("Contact Support Team") 
+    var editName by remember { mutableStateOf(name) }
+    var currentPhoto by remember { mutableStateOf(photoUrl) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(ctx.contentResolver, uri))
+                } else {
+                    MediaStore.Images.Media.getBitmap(ctx.contentResolver, uri)
+                }
+                val outputStream = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 40, outputStream)
+                val base64Image = "data:image/jpeg;base64," + Base64.encodeToString(outputStream.toByteArray(), Base64.DEFAULT)
+                currentPhoto = base64Image
+            } catch (e: Exception) {}
         }
-        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_SENDTO).apply { data = Uri.parse("mailto:bayratravel@gmail.com") }) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)) { Text("Email Empire Support") }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.clickable { imagePicker.launch("image/*") }) {
+            if (currentPhoto.isNotEmpty()) {
+                AsyncImage(model = currentPhoto, contentDescription = "Profile", modifier = Modifier.size(100.dp).clip(CircleShape).background(Color.LightGray), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(100.dp), tint = IMPERIAL_BLUE)
+            }
+            Box(modifier = Modifier.background(IMPERIAL_RED, CircleShape).padding(6.dp)) {
+                Icon(Icons.Filled.Edit, null, modifier = Modifier.size(16.dp), tint = Color.White)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Passenger Name") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedTextField(value = phone, onValueChange = {}, label = { Text("Phone Number") }, enabled = false, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedTextField(value = email, onValueChange = {}, label = { Text("Email Address") }, enabled = false, modifier = Modifier.fillMaxWidth())
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        Button(
+            onClick = {
+                if (editName.isNotEmpty()) {
+                    isSaving = true
+                    val userRef = FirebaseDatabase.getInstance(DB_URL).getReference("users/$phone")
+                    userRef.updateChildren(mapOf("name" to editName, "photoUrl" to currentPhoto)).addOnCompleteListener {
+                        isSaving = false
+                        onProfileUpdated(editName, currentPhoto)
+                        Toast.makeText(ctx, "Profile Updated!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = IMPERIAL_BLUE)
+        ) {
+            if (isSaving) CircularProgressIndicator(color = Color.White) else Text("SAVE PROFILE", fontWeight = FontWeight.Bold)
+        }
+
+        Divider(modifier = Modifier.padding(vertical = 24.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { 
+            Text("Dark Mode Appearance", fontWeight = FontWeight.Bold)
+            Switch(checked = isDarkMode, onCheckedChange = onToggle) 
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/bayratravelchat"))) }, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9))) { Text("Contact Support Team", fontWeight = FontWeight.Bold) }
     }
 }
 
