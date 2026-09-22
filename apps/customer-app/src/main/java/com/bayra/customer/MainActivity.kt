@@ -1,4 +1,10 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.bayra.customer
+import android.app.Activity
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 
 import android.Manifest
 import android.app.NotificationChannel
