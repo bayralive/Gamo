@@ -4,7 +4,7 @@ import android.app.Activity
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
+import androidx.compose.material3.TopAppBarDefaults.smallTopAppBarColors
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -391,7 +391,7 @@ fun PassengerSuperApp(openRecoveryDirectly: MutableState<Boolean> = mutableState
                             TopAppBar(
                                 title = { Text("Bayra Travel", color = Color.White, fontWeight = FontWeight.Black) },
                                 navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, null, tint = Color.White) } },
-                                colors = TopAppBarDefaults.topAppBarColors(containerColor = IMPERIAL_BLUE)
+                                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = IMPERIAL_BLUE)
                             )
                         }
                     ) { padding ->
