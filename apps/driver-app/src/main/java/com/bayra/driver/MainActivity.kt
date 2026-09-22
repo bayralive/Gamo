@@ -80,7 +80,12 @@ import java.net.URLEncoder
 import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
-val ImperialBlue = Color(0xFF1A237E)
+
+// 🎨 POWDER BLUE COLOR PALETTE
+val PowderBlue = Color(0xFFB0E0E6)
+val PowderBlueLight = Color(0xFFE0F2FE)
+val PowderBlueDark = Color(0xFF0284C7)
+val ImperialDark = Color(0xFF0F172A)
 val ImperialRed = Color(0xFFD50000)
 val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
@@ -90,7 +95,6 @@ val GoldYellow = Color(0xFFFFB300)
 const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
 const val CHAT_ID = "5232430147"
 
-// 🤖 CASHIER BOT CREDENTIALS (Used for Document Uploads)
 const val CASHIER_BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94" 
 const val CASHIER_CHAT_ID = "5232430147"
 
@@ -266,7 +270,6 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
             )
         }
     } else {
-        // 🔥 Rebuilt Routing Logic for flawless back navigation
         val isLockedOut = driverStatus != "VERIFIED" && rideCount >= 10
         val isManuallyVerifying = chosenVerificationPath == "VERIFY_NOW"
 
@@ -283,18 +286,38 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
             val isDebtLocked = (debt - credit) >= 500
             Scaffold(
                 bottomBar = {
-                    NavigationBar(containerColor = Color.Black) {
-                        NavigationBarItem(selected = (currentTab == "RADAR"), onClick = { currentTab = "RADAR" }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Radar", color = ImperialWhite, fontSize = 11.sp) })
-                        NavigationBarItem(selected = (currentTab == "WALLET"), onClick = { currentTab = "WALLET" }, icon = { Icon(Icons.Filled.AccountBalanceWallet, null) }, label = { Text("Vault", color = ImperialWhite, fontSize = 11.sp) })
-                        NavigationBarItem(selected = (currentTab == "PROFILE"), onClick = { currentTab = "PROFILE" }, icon = { Icon(Icons.Filled.Person, null) }, label = { Text("Profile", color = ImperialWhite, fontSize = 11.sp) })
-                        NavigationBarItem(selected = (currentTab == "HISTORY"), onClick = { currentTab = "HISTORY" }, icon = { Icon(Icons.Filled.List, null) }, label = { Text("Trips", color = ImperialWhite, fontSize = 11.sp) })
+                    NavigationBar(containerColor = PowderBlue) {
+                        NavigationBarItem(
+                            selected = (currentTab == "RADAR"), 
+                            onClick = { currentTab = "RADAR" }, 
+                            icon = { Icon(Icons.Filled.Home, null, tint = if (currentTab == "RADAR") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Radar", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "WALLET"), 
+                            onClick = { currentTab = "WALLET" }, 
+                            icon = { Icon(Icons.Filled.AccountBalanceWallet, null, tint = if (currentTab == "WALLET") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Vault", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "PROFILE"), 
+                            onClick = { currentTab = "PROFILE" }, 
+                            icon = { Icon(Icons.Filled.Person, null, tint = if (currentTab == "PROFILE") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Profile", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "HISTORY"), 
+                            onClick = { currentTab = "HISTORY" }, 
+                            icon = { Icon(Icons.Filled.List, null, tint = if (currentTab == "HISTORY") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Trips", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
                     }
                 }
             ) { padding ->
-                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                Box(modifier = Modifier.padding(padding).fillMaxSize().background(PowderBlueLight)) {
                     when (currentTab) {
                         "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ") }
-                        "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
+                        "WALLET" -> DriverWalletScreen(dName, dPhone, debt, credit, onBack = { currentTab = "RADAR" })
                         "PROFILE" -> DriverProfileScreen(
                             name = dName, 
                             phone = dPhone, 
@@ -352,29 +375,29 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
         } else authMode = "CHOICE"
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(ImperialBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(id = R.drawable.logo_driver), contentDescription = null, modifier = Modifier.size(130.dp))
         Spacer(modifier = Modifier.height(16.dp))
-        Text("IMPERIAL GUARD", fontSize = 26.sp, fontWeight = FontWeight.Black, color = ImperialWhite)
-        Text("Bayra Fleet Portal • Arba Minch", fontSize = 13.sp, color = Color.LightGray)
+        Text("BAYRA FLEET", fontSize = 26.sp, fontWeight = FontWeight.Black, color = ImperialDark)
+        Text("Imperial Driver Portal • Powder Blue Core", fontSize = 13.sp, color = Color.DarkGray)
         Spacer(modifier = Modifier.height(28.dp))
 
         when (authMode) {
             "CHOICE" -> {
-                Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F3F5)), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    if (isGoogleConnecting) CircularProgressIndicator(color = ImperialBlue, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Call, null, tint = Color.Red); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
+                    if (isGoogleConnecting) CircularProgressIndicator(color = PowderBlueDark, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Call, null, tint = PowderBlueDark); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
+                Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
                     Icon(Icons.Filled.Person, null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with Name & Password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
             "MANUAL" -> {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Driver Full Name", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Driver Full Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Get Telegram Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Reset via Telegram", color = PowderBlueDark, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
                     if (name.isNotEmpty() && phone.isNotEmpty() && password.isNotEmpty()) {
@@ -395,20 +418,20 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             override fun onCancelled(e: DatabaseError) { isLoading = false }
                         })
                     }
-                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
+                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.LightGray) }
+                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.DarkGray) }
             }
             "GOOGLE_PHONE" -> {
                 if (googlePhotoUrl.isNotEmpty()) { AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop); Spacer(modifier = Modifier.height(8.dp)) }
-                Text("✓ Google Account Linked", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("Welcome, $name", color = Color.White, fontWeight = FontWeight.Medium)
+                Text("✓ Google Account Linked", color = EmeraldGreen, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Welcome, $name", color = ImperialDark, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password", color = Color.LightGray) }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialWhite, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
                     if (phone.length >= 9 && password.length >= 4) {
@@ -429,15 +452,15 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
                             override fun onCancelled(e: DatabaseError) { isLoading = false }
                         })
                     } else Toast.makeText(ctx, "Please enter phone and a password.", Toast.LENGTH_SHORT).show() 
-                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) {
+                }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("SECURE & ENTER FLEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE" }) { Text("Cancel", color = Color.LightGray) }
+                TextButton(onClick = { authMode = "CHOICE" }) { Text("Cancel", color = Color.DarkGray) }
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }) { Text("Need Fleet Registration Help? Contact Council", color = Color.LightGray, fontSize = 12.sp) }
+        TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }) { Text("Need Registration Help? Contact Council", color = Color.DarkGray, fontSize = 12.sp) }
     }
 }
 
@@ -452,10 +475,10 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
     var isLoading by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Filled.Lock, null, modifier = Modifier.size(72.dp), tint = ImperialBlue)
-        Text("PASSWORD RECOVERY", fontSize = 22.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(top = 16.dp))
-        Text("Powered by Telegram Gateway", color = Color.Gray, fontSize = 13.sp, modifier = Modifier.padding(bottom = 28.dp))
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Filled.Lock, null, modifier = Modifier.size(72.dp), tint = PowderBlueDark)
+        Text("PASSWORD RECOVERY", fontSize = 22.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(top = 16.dp))
+        Text("Official Telegram Gateway Service", color = Color.Gray, fontSize = 13.sp, modifier = Modifier.padding(bottom = 28.dp))
 
         if (step == "PHONE") {
             OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Registered Driver Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
@@ -474,20 +497,16 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
                             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                             conn.responseCode
                         } catch (e: Exception) {}
-                        try {
-                            val msg = "🚨 DRIVER PASSWORD RECOVERY\nPhone: $phone\nPIN: $generatedPin"
-                            URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}").readText()
-                        } catch (e: Exception) {}
                         isLoading = false; step = "PIN"
                     }
                 } else Toast.makeText(ctx, "Please enter a valid phone number.", Toast.LENGTH_SHORT).show()
-            }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) {
+            }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SEND CODE VIA TELEGRAM", fontWeight = FontWeight.Bold)
             }
         } else {
             OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Enter Telegram Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
             Spacer(modifier = Modifier.height(14.dp))
-            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = ImperialBlue, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
             Spacer(modifier = Modifier.height(22.dp))
             Button(onClick = {
                 if (code.length >= 4 && newPass.length >= 4) {
@@ -508,7 +527,7 @@ fun DriverPasswordRecoveryView(onBack: () -> Unit) {
                         override fun onCancelled(e: DatabaseError) { isLoading = false }
                     })
                 }
-            }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) {
+            }, modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SECURE NEW PASSWORD", fontWeight = FontWeight.Bold)
             }
         }
@@ -524,29 +543,29 @@ fun VehicleGateScreen(driverName: String, onBack: () -> Unit) {
     var plateNumber by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(28.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(28.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("SELECT VEHICLE", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("SELECT VEHICLE", fontSize = 20.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(20.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Card(modifier = Modifier.weight(1f).clickable { selectedType = "BAJAJ" }, colors = CardDefaults.cardColors(containerColor = if (selectedType == "BAJAJ") ImperialBlue else Color(0xFFF1F5F9)), shape = RoundedCornerShape(16.dp)) {
-                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("🛺", fontSize = 42.sp); Spacer(modifier = Modifier.height(8.dp)); Text("BAJAJ", fontWeight = FontWeight.Black, color = if (selectedType == "BAJAJ") Color.White else Color.Black) }
+            Card(modifier = Modifier.weight(1f).clickable { selectedType = "BAJAJ" }, colors = CardDefaults.cardColors(containerColor = if (selectedType == "BAJAJ") PowderBlue else Color.White), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("🛺", fontSize = 42.sp); Spacer(modifier = Modifier.height(8.dp)); Text("BAJAJ", fontWeight = FontWeight.Black, color = Color.Black) }
             }
-            Card(modifier = Modifier.weight(1f).clickable { selectedType = "CODE3" }, colors = CardDefaults.cardColors(containerColor = if (selectedType == "CODE3") ImperialBlue else Color(0xFFF1F5F9)), shape = RoundedCornerShape(16.dp)) {
-                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("🚗", fontSize = 42.sp); Spacer(modifier = Modifier.height(8.dp)); Text("CODE 3", fontWeight = FontWeight.Black, color = if (selectedType == "CODE3") Color.White else Color.Black) }
+            Card(modifier = Modifier.weight(1f).clickable { selectedType = "CODE3" }, colors = CardDefaults.cardColors(containerColor = if (selectedType == "CODE3") PowderBlue else Color.White), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text("🚗", fontSize = 42.sp); Spacer(modifier = Modifier.height(8.dp)); Text("CODE 3", fontWeight = FontWeight.Black, color = Color.Black) }
             }
         }
         Spacer(modifier = Modifier.height(28.dp))
-        OutlinedTextField(value = plateNumber, onValueChange = { plateNumber = it }, label = { Text("Car / Bajaj Plate Number (e.g. 3-45678 ET)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+        OutlinedTextField(value = plateNumber, onValueChange = { plateNumber = it }, label = { Text("Plate Number (e.g. 3-45678 ET)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(modifier = Modifier.height(30.dp))
         Button(onClick = {
             if (plateNumber.length >= 4) {
                 isSaving = true
-                FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(mapOf("vehicleType" to selectedType, "carPlate" to plateNumber.uppercase().trim())).addOnCompleteListener { isSaving = false; Toast.makeText(ctx, "Vehicle Profile Registered!", Toast.LENGTH_SHORT).show() }
+                FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(mapOf("vehicleType" to selectedType, "carPlate" to plateNumber.uppercase().trim())).addOnCompleteListener { isSaving = false; Toast.makeText(ctx, "Vehicle Registered!", Toast.LENGTH_SHORT).show() }
             } else Toast.makeText(ctx, "Please enter a valid plate number.", Toast.LENGTH_SHORT).show()
-        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(14.dp)) {
+        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(14.dp)) {
             if (isSaving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp)) else Text("CONFIRM VEHICLE", fontWeight = FontWeight.Bold)
         }
     }
@@ -555,20 +574,20 @@ fun VehicleGateScreen(driverName: String, onBack: () -> Unit) {
 @Composable
 fun VerificationChoiceScreen(driverName: String, onBack: () -> Unit) {
     val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName")
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("VERIFICATION PATH", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("VERIFICATION PATH", fontSize = 20.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(30.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(22.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🏎️", fontSize = 32.sp); Spacer(modifier = Modifier.width(12.dp))
-                    Column { Text("OPTION A: 10-RIDE TRIAL", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = ImperialBlue); Text("Start driving immediately on probation", fontSize = 12.sp, color = Color.Gray) }
+                    Column { Text("OPTION A: 10-RIDE TRIAL", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = PowderBlueDark); Text("Start driving immediately on probation", fontSize = 12.sp, color = Color.Gray) }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { ref.child("verificationPath").setValue("TRIAL") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) { Text("START 10-RIDE TRIAL", fontWeight = FontWeight.Bold) }
+                Button(onClick = { ref.child("verificationPath").setValue("TRIAL") }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text("START 10-RIDE TRIAL", fontWeight = FontWeight.Bold) }
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
@@ -588,11 +607,9 @@ fun VerificationChoiceScreen(driverName: String, onBack: () -> Unit) {
 @Composable
 fun DocumentUploadBox(title: String, uri: Uri?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(
-        modifier = modifier
-            .height(115.dp)
-            .clickable { onClick() },
+        modifier = modifier.height(115.dp).clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE2E8F0)),
+        colors = CardDefaults.cardColors(containerColor = PowderBlue),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -602,9 +619,9 @@ fun DocumentUploadBox(title: String, uri: Uri?, modifier: Modifier = Modifier, o
                 Icon(Icons.Filled.CheckCircle, null, tint = Color.White, modifier = Modifier.size(36.dp))
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.Add, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Filled.Add, null, tint = PowderBlueDark, modifier = Modifier.size(28.dp))
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ImperialBlue, textAlign = TextAlign.Center)
+                    Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PowderBlueDark, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -622,24 +639,19 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
     var licenseUri by remember { mutableStateOf<Uri?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
 
-    val idLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> 
-        if (uri != null) idUri = uri 
-    }
-    
-    val licenseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> 
-        if (uri != null) licenseUri = uri 
-    }
+    val idLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> if (uri != null) idUri = uri }
+    val licenseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> if (uri != null) licenseUri = uri }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { 
                 if (rideCount >= 10 && driverStatus != "VERIFIED") {
-                    Toast.makeText(ctx, "Verification required to continue using the app.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Verification required to continue.", Toast.LENGTH_SHORT).show()
                 } else {
                     onBack() 
                 }
-            }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("COMMISSIONING", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("COMMISSIONING", fontSize = 20.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -648,15 +660,15 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("⏳ STATUS: PENDING APPROVAL", fontWeight = FontWeight.Black, color = Color(0xFFB45309))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Your application is under review. If you need to make corrections, you can re-upload your photos below.", fontSize = 13.sp, color = Color(0xFF92400E), textAlign = TextAlign.Center)
+                    Text("Your application is under active review. Tap the boxes below if you need to update documents.", fontSize = 13.sp, color = Color(0xFF92400E), textAlign = TextAlign.Center)
                 }
             }
             Spacer(modifier = Modifier.height(25.dp))
         }
 
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)), shape = RoundedCornerShape(14.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Step 1: Driver Credentials", fontWeight = FontWeight.Bold, color = ImperialBlue)
+                Text("Step 1: Driver Credentials", fontWeight = FontWeight.Bold, color = PowderBlueDark)
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(value = fullName, onValueChange = { fullName = it }, label = { Text("Full Legal Name (As on ID)") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
@@ -668,10 +680,10 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)), shape = RoundedCornerShape(14.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp)) {
-                Text("Step 2: Document Photos", fontWeight = FontWeight.Bold, color = ImperialBlue)
-                Text("Tap the boxes below to select images from your gallery.", fontSize = 12.sp, color = Color.Gray)
+                Text("Step 2: Document Photos", fontWeight = FontWeight.Bold, color = PowderBlueDark)
+                Text("Tap the boxes below to upload clear photos from gallery", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     DocumentUploadBox("Upload ID", idUri, Modifier.weight(1f)) { idLauncher.launch("image/*") }
@@ -682,12 +694,12 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(14.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Step 3: Mandatory Interview Gateway", fontWeight = FontWeight.Bold, color = ImperialBlue)
+                Text("Step 3: Mandatory Interview Gateway", fontWeight = FontWeight.Bold, color = PowderBlueDark)
                 Text("Join the Council's official driver verification group", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9)), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Filled.Call, null); Spacer(modifier = Modifier.width(8.dp)); Text("JOIN INTERVIEW GROUP", fontWeight = FontWeight.Bold)
                 }
             }
@@ -720,7 +732,7 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                     }
                     
                     try {
-                        val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nApp Login Name: $driverName\nLegal Name: $fullName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
+                        val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nDriver App Name: $driverName\nLegal Name: $fullName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
                         val urlStr = "https://api.telegram.org/bot$CASHIER_BOT_TOKEN/sendMessage?chat_id=$CASHIER_CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
                         URL(urlStr).readText()
                     } catch (e: Exception) {}
@@ -728,7 +740,7 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
             } else {
                 Toast.makeText(ctx, "Please complete all text fields and attach BOTH photos.", Toast.LENGTH_LONG).show()
             }
-        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(14.dp)) {
+        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(14.dp)) {
             if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT FOR APPROVAL", fontWeight = FontWeight.Bold)
         }
     }
@@ -799,18 +811,18 @@ fun RadarHubScreen(driverName: String, driverPhone: String, driverStatus: String
         }, modifier = Modifier.fillMaxSize())
 
         if (driverStatus != "VERIFIED" && rideCount < 10) {
-            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).background(ImperialBlue, RoundedCornerShape(20.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Text("TRIAL RIDES: $rideCount / 10", color = GoldYellow, fontWeight = FontWeight.Black, fontSize = 12.sp)
+            Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).background(PowderBlueDark, RoundedCornerShape(20.dp)).padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text("TRIAL RIDES: $rideCount / 10", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
             }
         }
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
             if (!isRadarOn && activeSnap == null) {
-                Button(onClick = { isRadarOn = true; driverRef.updateChildren(mapOf("isOnline" to true)) }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(16.dp)) { Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) }
+                Button(onClick = { isRadarOn = true; driverRef.updateChildren(mapOf("isOnline" to true)) }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(16.dp)) { Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) }
             } else {
-                Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = 0.85f)) {
+                Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = PowderBlue) {
                     Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("RADAR ACTIVE • $vehicleType", color = Color.Green, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("RADAR ACTIVE • $vehicleType", color = PowderBlueDark, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         if (activeSnap == null) { Button(onClick = { isRadarOn = false; driverRef.updateChildren(mapOf("isOnline" to false)) }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), shape = RoundedCornerShape(8.dp)) { Text("GO OFFLINE", fontSize = 12.sp) } }
                     }
                 }
@@ -823,7 +835,7 @@ fun RadarHubScreen(driverName: String, driverPhone: String, driverStatus: String
                     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (status.startsWith("PAID_")) EmeraldGreen else Color.White), shape = RoundedCornerShape(16.dp)) {
                         Column(modifier = Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${job.child("pName").value} • $finalPrice ETB", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = if (status.startsWith("PAID_")) Color.White else Color.Black)
-                            if (status == "ON_TRIP") Text("Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (isOverLimit) ImperialRed else ImperialBlue)
+                            if (status == "ON_TRIP") Text("Odometer: ${String.format(Locale.US, "%.2f", distanceKm)} KM", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (isOverLimit) ImperialRed else PowderBlueDark)
                             if (status.startsWith("PAID_")) {
                                 Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(42.dp), tint = Color.White)
                                 val finishBtnText = if (status == "PAID_CASH") "COLLECT CASH & FINISH" else "CONFIRM & COMPLETE"
@@ -842,11 +854,11 @@ fun RadarHubScreen(driverName: String, driverPhone: String, driverStatus: String
                             } else {
                                 Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     val isOnTrip = status == "ON_TRIP"
-                                    Button(onClick = { val dLat = job.child(if (isOnTrip) "dLat" else "pLat").value?.toString()?.toDoubleOrNull() ?: 0.0; val dLon = job.child(if (isOnTrip) "dLon" else "pLon").value?.toString()?.toDoubleOrNull() ?: 0.0; launchNav(ctx, dLat, dLon) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) { Text(if (isOnTrip) "NAV DEST" else "NAV PICKUP") }
-                                    IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, modifier = Modifier.background(Color.Black, CircleShape)) { Icon(Icons.Filled.Call, null, tint = Color.White) }
+                                    Button(onClick = { val dLat = job.child(if (isOnTrip) "dLat" else "pLat").value?.toString()?.toDoubleOrNull() ?: 0.0; val dLon = job.child(if (isOnTrip) "dLon" else "pLon").value?.toString()?.toDoubleOrNull() ?: 0.0; launchNav(ctx, dLat, dLon) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text(if (isOnTrip) "NAV DEST" else "NAV PICKUP") }
+                                    IconButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.child("pPhone").value}"))) }, modifier = Modifier.background(PowderBlueDark, CircleShape)) { Icon(Icons.Filled.Call, null, tint = Color.White) }
                                 }
                                 val nextState = when (status) { "ACCEPTED" -> "ARRIVED"; "ARRIVED" -> "ON_TRIP"; else -> "ARRIVED_DEST" }
-                                Button(onClick = { ref.child(job.key!!).child("status").setValue(nextState) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text(nextState, fontWeight = FontWeight.Bold) }
+                                Button(onClick = { ref.child(job.key!!).child("status").setValue(nextState) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text(nextState, fontWeight = FontWeight.Bold) }
                             }
                         }
                     }
@@ -868,7 +880,7 @@ fun RadarHubScreen(driverName: String, driverPhone: String, driverStatus: String
                                             }
                                             override fun onComplete(e: DatabaseError?, c: Boolean, d: DataSnapshot?) {}
                                         })
-                                    }, colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(8.dp)) { Text("ACCEPT") }
+                                    }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(8.dp)) { Text("ACCEPT") }
                                 }
                             }
                         }
@@ -885,7 +897,7 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     var smsText by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFFFF1F2)).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(modifier = Modifier.height(16.dp))
         Icon(Icons.Filled.Lock, null, modifier = Modifier.size(68.dp), tint = ImperialRed)
         Spacer(modifier = Modifier.height(8.dp))
@@ -902,16 +914,16 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(12.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = PowderBlue), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = ImperialBlue, fontSize = 13.sp)
-                Text("Deposit to either account and paste the confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
+                Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = PowderBlueDark, fontSize = 13.sp)
+                Text("Deposit to either account and paste confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color.White) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("1. Commercial Bank of Ethiopia (CBE)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1E3A8A))
+                        Text("1. Commercial Bank of Ethiopia (CBE)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = PowderBlueDark)
                         Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
-                        Text("Account No: 1000379893698", fontSize = 15.sp, fontWeight = FontWeight.Black, color = ImperialBlue)
+                        Text("Account No: 1000379893698", fontSize = 15.sp, fontWeight = FontWeight.Black, color = PowderBlueDark)
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
@@ -934,7 +946,7 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
                     isSubmitting = false; Toast.makeText(ctx, "Deposit proof submitted! Reconciliation team notified via Telegram.", Toast.LENGTH_LONG).show(); smsText = ""
                 }
             } else Toast.makeText(ctx, "Please paste the complete bank or Telebirr SMS.", Toast.LENGTH_SHORT).show()
-        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), shape = RoundedCornerShape(12.dp)) {
+        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
             if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT DEPOSIT PROOF", fontWeight = FontWeight.Bold)
         }
     }
@@ -942,8 +954,9 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () -> Unit) {
+fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credit: Int, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val balance = maxOf(0, credit - debt)
     var showWithdrawModal by remember { mutableStateOf(false) }
     var withdrawAmount by remember { mutableStateOf("") }
@@ -952,35 +965,36 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
     var accountHolder by remember { mutableStateOf("") }
     var telegramCode by remember { mutableStateOf("") }
     var challengeGenerated by remember { mutableStateOf<String?>(null) }
+    var isSendingTelegramCode by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(20.dp).verticalScroll(rememberScrollState())) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("IMPERIAL VAULT", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("IMPERIAL VAULT", fontSize = 24.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(20.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = ImperialBlue), shape = RoundedCornerShape(16.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = PowderBlue), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(22.dp)) {
-                Text("Available Balance", color = Color(0xFFC5CAE9), fontSize = 13.sp)
-                Text("$balance ETB", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
+                Text("Available Balance", color = Color.DarkGray, fontSize = 13.sp)
+                Text("$balance ETB", color = PowderBlueDark, fontSize = 34.sp, fontWeight = FontWeight.Black)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Credits: +$credit ETB", color = Color(0xFFA7F3D0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("Debts: -$debt ETB", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Credits: +$credit ETB", color = EmeraldGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Debts: -$debt ETB", color = ImperialRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = { showWithdrawModal = true }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(12.dp)) {
+        Button(onClick = { showWithdrawModal = true }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
             Icon(Icons.Filled.AccountBalanceWallet, null); Spacer(modifier = Modifier.width(8.dp)); Text("REQUEST WITHDRAWAL (MIN 200 ETB)", fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.height(20.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(12.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("⏰ Withdrawal Window Notice", fontWeight = FontWeight.Bold, color = ImperialBlue, fontSize = 13.sp)
+                Text("⏰ Withdrawal Window Notice", fontWeight = FontWeight.Bold, color = PowderBlueDark, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Processing Window: 03:00 AM – 05:00 AM", fontSize = 12.sp, color = Color.DarkGray)
-                Text("ገንዘብዎ በተጠቀሰው ሰዓት ገቢ ይሆናል", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ImperialBlue)
+                Text("ገንዘብዎ በተጠቀሰው ሰዓት ገቢ ይሆናል", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = PowderBlueDark)
             }
         }
     }
@@ -988,7 +1002,7 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
     if (showWithdrawModal) {
         AlertDialog(
             onDismissRequest = { showWithdrawModal = false },
-            title = { Text("Request Withdrawal", fontWeight = FontWeight.Bold, color = ImperialBlue) },
+            title = { Text("Request Withdrawal", fontWeight = FontWeight.Bold, color = PowderBlueDark) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     if (challengeGenerated == null) {
@@ -996,7 +1010,7 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
                         Spacer(modifier = Modifier.height(10.dp))
                         Text("Select Destination:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("CBE", "Telebirr", "Abyssinia", "Dashen").forEach { b -> Surface(modifier = Modifier.clickable { selectedBank = b }, color = if (selectedBank == b) ImperialBlue else Color(0xFFE2E8F0), shape = RoundedCornerShape(8.dp)) { Text(b, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), color = if (selectedBank == b) Color.White else Color.Black, fontSize = 11.sp) } }
+                            listOf("CBE", "Telebirr", "Abyssinia", "Dashen").forEach { b -> Surface(modifier = Modifier.clickable { selectedBank = b }, color = if (selectedBank == b) PowderBlueDark else Color(0xFFE2E8F0), shape = RoundedCornerShape(8.dp)) { Text(b, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), color = if (selectedBank == b) Color.White else Color.Black, fontSize = 11.sp) } }
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(value = bankAccount, onValueChange = { bankAccount = it }, label = { Text("Account or Phone Number") }, modifier = Modifier.fillMaxWidth())
@@ -1006,10 +1020,10 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
                         Text("Amount: $withdrawAmount ETB", fontWeight = FontWeight.Bold)
                         Text("Destination: $selectedBank ($bankAccount)")
                         Spacer(modifier = Modifier.height(14.dp))
-                        Text("🔐 ONE-TIME TELEGRAM VERIFICATION", color = ImperialRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Text("Challenge Code sent to @Walletassistantdriverbot", fontSize = 12.sp, color = Color.Gray)
+                        Text("🔐 OFFICIAL TELEGRAM VERIFICATION", color = PowderBlueDark, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Code dispatched via Telegram Gateway to $driverPhone", fontSize = 12.sp, color = Color.Gray)
                         Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedTextField(value = telegramCode, onValueChange = { telegramCode = it }, label = { Text("Enter 6-Digit Challenge Code") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = telegramCode, onValueChange = { telegramCode = it }, label = { Text("Enter 6-Digit Verification Code") }, modifier = Modifier.fillMaxWidth())
                     }
                 }
             },
@@ -1018,19 +1032,43 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
                     val amountNum = withdrawAmount.toIntOrNull() ?: 0
                     if (challengeGenerated == null) {
                         if (amountNum in 200..balance && bankAccount.isNotEmpty() && accountHolder.isNotEmpty()) {
+                            isSendingTelegramCode = true
                             val generatedPin = (100000..999999).random().toString()
                             challengeGenerated = generatedPin
                             FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName/pendingChallenge").setValue(generatedPin)
-                            Toast.makeText(ctx, "Verification code sent to @Walletassistantdriverbot", Toast.LENGTH_LONG).show()
+
+                            // 🔥 OFFICIAL TELEGRAM GATEWAY API DISPATCH
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
+                                    val conn = url.openConnection() as HttpURLConnection
+                                    conn.requestMethod = "POST"
+                                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                                    conn.doOutput = true
+                                    val body = JSONObject().put("phone", driverPhone).put("pin", generatedPin).toString()
+                                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                                    conn.responseCode
+                                } catch (e: Exception) {}
+                                
+                                try {
+                                    val msg = "🔐 OFFICIAL TELEGRAM WITHDRAWAL CODE\nDriver: $driverName\nPhone: $driverPhone\nAmount: $amountNum ETB\nCode: $generatedPin"
+                                    URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}").readText()
+                                } catch (e: Exception) {}
+                                isSendingTelegramCode = false
+                            }
+                            Toast.makeText(ctx, "Official verification code sent to your Telegram!", Toast.LENGTH_LONG).show()
                         } else Toast.makeText(ctx, "Min withdrawal is 200 ETB within available balance.", Toast.LENGTH_SHORT).show()
                     } else {
                         if (telegramCode == challengeGenerated || telegramCode == "123456") {
                             val reqId = "W_${System.currentTimeMillis()}"
                             val reqData = mapOf("requestId" to reqId, "driverName" to driverName, "amount" to amountNum, "bank" to selectedBank, "account" to bankAccount, "accountHolder" to accountHolder, "status" to "PENDING", "requestedAt" to System.currentTimeMillis())
-                            FirebaseDatabase.getInstance(DB_URL).getReference("withdrawals/$reqId").setValue(reqData).addOnCompleteListener { showWithdrawModal = false; Toast.makeText(ctx, "Withdrawal Authorized! Processing window: 03:00–05:00 AM.", Toast.LENGTH_LONG).show() }
-                        } else Toast.makeText(ctx, "Invalid Challenge Code!", Toast.LENGTH_SHORT).show()
+                            FirebaseDatabase.getInstance(DB_URL).getReference("withdrawals/$reqId").setValue(reqData).addOnCompleteListener { showWithdrawModal = false; Toast.makeText(ctx, "Withdrawal Authorized! Cashier notified.", Toast.LENGTH_LONG).show() }
+                        } else Toast.makeText(ctx, "Invalid Verification Code!", Toast.LENGTH_SHORT).show()
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue)) { Text(if (challengeGenerated == null) "VERIFY THIS WITHDRAWAL" else "AUTHORIZE") }
+                }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { 
+                    if (isSendingTelegramCode) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    else Text(if (challengeGenerated == null) "GET TELEGRAM CODE" else "AUTHORIZE") 
+                }
             },
             dismissButton = { TextButton(onClick = { showWithdrawModal = false }) { Text("Cancel") } }
         )
@@ -1071,10 +1109,10 @@ fun DriverProfileScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("DRIVER PROFILE", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("DRIVER PROFILE", fontSize = 20.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(10.dp))
         
@@ -1091,15 +1129,15 @@ fun DriverProfileScreen(
                     if (bitmap != null) {
                         Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     } else {
-                        Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = ImperialBlue)
+                        Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = PowderBlueDark)
                     }
                 } else if (profilePicUrl != null && profilePicUrl.startsWith("http")) {
                     AsyncImage(model = profilePicUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
-                    Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = ImperialBlue)
+                    Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = PowderBlueDark)
                 }
             }
-            Box(modifier = Modifier.background(ImperialBlue, CircleShape).padding(6.dp)) {
+            Box(modifier = Modifier.background(PowderBlueDark, CircleShape).padding(6.dp)) {
                 Icon(Icons.Filled.Edit, contentDescription = "Edit Profile Pic", modifier = Modifier.size(16.dp), tint = Color.White)
             }
         }
@@ -1135,7 +1173,7 @@ fun DriverProfileScreen(
             Button(
                 onClick = { onVerifyClicked() }, 
                 modifier = Modifier.fillMaxWidth().height(45.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue),
+                colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(if (status == "PENDING_APPROVAL") "UPDATE VERIFICATION DOCS" else "COMPLETE VERIFICATION", fontWeight = FontWeight.Bold)
@@ -1180,10 +1218,10 @@ fun DriverRideHistoryScreen(driverName: String, onBack: () -> Unit) {
             override fun onCancelled(e: DatabaseError) {}
         })
     }
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
-            Text("COMPLETED TRIPS", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
+            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
+            Text("COMPLETED TRIPS", fontSize = 20.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(14.dp))
         if (history.isEmpty()) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No completed rides found.", color = Color.Gray) }
