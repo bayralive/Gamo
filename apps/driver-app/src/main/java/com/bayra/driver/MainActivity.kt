@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -154,6 +155,13 @@ fun getBase64Image(ctx: Context, uri: Uri): String? {
     } catch (e: Exception) { null }
 }
 
+fun decodeBase64ToBitmap(b64: String): android.graphics.Bitmap? {
+    return try {
+        val decodedString = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+        android.graphics.BitmapFactory.decodeByteArray(decodedString, 0, decodedString.size)
+    } catch (e: Exception) { null }
+}
+
 @Composable
 fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     val ctx = LocalContext.current
@@ -179,6 +187,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     var debt by remember { mutableStateOf(0) }
     var credit by remember { mutableStateOf(0) }
     var chosenVerificationPath by remember { mutableStateOf<String?>(null) }
+    var profilePic by remember { mutableStateOf<String?>(null) }
     
     var currentTab by rememberSaveable { mutableStateOf("RADAR") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
@@ -231,6 +240,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     debt = s.child("debt").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
                     credit = s.child("credit").value?.toString()?.toDoubleOrNull()?.toInt() ?: 0
                     chosenVerificationPath = s.child("verificationPath").value?.toString()
+                    profilePic = s.child("profilePhotoBase64").value?.toString() ?: s.child("photoUrl").value?.toString()
                 }
                 override fun onCancelled(e: DatabaseError) {}
             })
@@ -275,7 +285,7 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     when (currentTab) {
                         "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ") }
                         "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
-                        "PROFILE" -> DriverProfileScreen(dName, dPhone, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
+                        "PROFILE" -> DriverProfileScreen(dName, dPhone, profilePic, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
                         "HISTORY" -> DriverRideHistoryScreen(dName, onBack = { currentTab = "RADAR" })
                     }
                 }
@@ -550,9 +560,9 @@ fun VerificationChoiceScreen(driverName: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun RowScope.DocumentUploadBox(title: String, uri: Uri?, onClick: () -> Unit) {
+fun DocumentUploadBox(title: String, uri: Uri?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.weight(1f).height(115.dp).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).clickable { onClick() },
+        modifier = modifier.height(115.dp).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         if (uri != null) {
@@ -561,7 +571,7 @@ fun RowScope.DocumentUploadBox(title: String, uri: Uri?, onClick: () -> Unit) {
             Icon(Icons.Filled.CheckCircle, null, tint = Color.White, modifier = Modifier.size(36.dp))
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.AddPhotoAlternate, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
+                Icon(Icons.Filled.Add, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ImperialBlue, textAlign = TextAlign.Center)
             }
@@ -618,8 +628,8 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 Text("Tap to upload photos of your ID and License", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DocumentUploadBox("Upload ID\nPhoto", idUri) { if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") }
-                    DocumentUploadBox("Upload License\nPhoto", licenseUri) { if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") }
+                    DocumentUploadBox("Upload ID", idUri, Modifier.weight(1f)) { if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") }
+                    DocumentUploadBox("Upload License", licenseUri, Modifier.weight(1f)) { if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") }
                 }
             }
         }
@@ -657,8 +667,16 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                         )
                         
                         FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(updateMap).addOnCompleteListener { 
-                            isSubmitting = false 
+                            isSubmitting = false
+                            Toast.makeText(ctx, "Documents securely uploaded to Firebase!", Toast.LENGTH_LONG).show()
                         }
+                        
+                        // 🔥 FIRE TELEGRAM NOTIFICATION TO ADMIN
+                        try {
+                            val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nName: $driverName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
+                            val urlStr = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
+                            URL(urlStr).readText()
+                        } catch (e: Exception) {}
                     }
                 } else {
                     Toast.makeText(ctx, "Please complete fields and attach both photos.", Toast.LENGTH_SHORT).show()
@@ -974,22 +992,92 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
 }
 
 @Composable
-fun DriverProfileScreen(name: String, phone: String, imperialId: String, status: String, vehicleType: String, plate: String, rating: Double, completedRides: Int, onBack: () -> Unit, onLogout: () -> Unit) {
+fun DriverProfileScreen(name: String, phone: String, profilePicUrl: String?, imperialId: String, status: String, vehicleType: String, plate: String, rating: Double, completedRides: Int, onBack: () -> Unit, onLogout: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // 📸 THIS IS THE NEW GALLERY LAUNCHER FOR THE SEAT PROFILE PICTURE
+    val profileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            Toast.makeText(ctx, "Updating profile picture...", Toast.LENGTH_SHORT).show()
+            scope.launch(Dispatchers.IO) {
+                val b64 = getBase64Image(ctx, uri)
+                if (b64 != null) {
+                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$name/profilePhotoBase64").setValue(b64).addOnCompleteListener {
+                        Toast.makeText(ctx, "Profile picture saved!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF8FAFC)).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
             Text("DRIVER PROFILE", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(10.dp))
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
-            if (status == "VERIFIED") Box(modifier = Modifier.background(EmeraldGreen, CircleShape).padding(4.dp)) { Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp), tint = Color.White) }
+        
+        // PROFILE PICTURE AVATAR (CLICKABLE TO OPEN GALLERY)
+        Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.clickable { profileLauncher.launch("image/*") }) {
+            if (profilePicUrl != null && profilePicUrl.length > 200) {
+                val bitmap = decodeBase64ToBitmap(profilePicUrl)
+                if (bitmap != null) {
+                    Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.size(90.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                } else {
+                    Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
+                }
+            } else if (profilePicUrl != null && profilePicUrl.startsWith("http")) {
+                AsyncImage(model = profilePicUrl, contentDescription = null, modifier = Modifier.size(90.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
+            }
+            
+            Box(modifier = Modifier.background(ImperialBlue, CircleShape).padding(6.dp)) {
+                Icon(Icons.Filled.Edit, contentDescription = "Edit Profile Pic", modifier = Modifier.size(16.dp), tint = Color.White)
+            }
         }
+        
         Spacer(modifier = Modifier.height(10.dp))
         Text(name, fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.Black)
         Text(phone, fontSize = 14.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
-        Surface(color = if (status == "VERIFIED") EmeraldGreen else ImperialRed, shape = RoundedCornerShape(8.dp)) { Text(text = if (status == "VERIFIED") "🛡️ VERIFIED DRIVER" else "⚠️ UNVERIFIED ($status)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) }
+        
+        val statusText = when (status) {
+            "VERIFIED" -> "🛡️ VERIFIED DRIVER"
+            "PENDING_APPROVAL" -> "⏳ PENDING APPROVAL"
+            else -> "⚠️ UNVERIFIED"
+        }
+        val statusColor = when (status) {
+            "VERIFIED" -> EmeraldGreen
+            "PENDING_APPROVAL" -> GoldYellow
+            else -> ImperialRed
+        }
+
+        Surface(color = statusColor, shape = RoundedCornerShape(8.dp)) { 
+            Text(
+                text = statusText, 
+                color = if (status == "PENDING_APPROVAL") Color.Black else Color.White, 
+                fontWeight = FontWeight.Bold, 
+                fontSize = 11.sp, 
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ) 
+        }
+
+        if (status == "UNVERIFIED") {
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { 
+                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$name/verificationPath").setValue("VERIFY_NOW") 
+                }, 
+                modifier = Modifier.fillMaxWidth().height(45.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("COMPLETE VERIFICATION", fontWeight = FontWeight.Bold)
+            }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
