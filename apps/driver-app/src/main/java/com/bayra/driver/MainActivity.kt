@@ -285,7 +285,23 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     when (currentTab) {
                         "RADAR" -> { if (isDebtLocked) DebtLockoutScreen(dName, debt, credit) else RadarHubScreen(dName, dPhone, driverStatus, rideCount, vehicleType ?: "BAJAJ") }
                         "WALLET" -> DriverWalletScreen(dName, debt, credit, onBack = { currentTab = "RADAR" })
-                        "PROFILE" -> DriverProfileScreen(dName, dPhone, profilePic, imperialId, driverStatus, vehicleType ?: "BAJAJ", carPlate ?: "N/A", rating, rideCount, onBack = { currentTab = "RADAR" }, onLogout = { isAuth = false; prefs.edit().clear().apply() })
+                        "PROFILE" -> DriverProfileScreen(
+                            name = dName, 
+                            phone = dPhone, 
+                            profilePicUrl = profilePic, 
+                            imperialId = imperialId, 
+                            status = driverStatus, 
+                            vehicleType = vehicleType ?: "BAJAJ", 
+                            plate = carPlate ?: "N/A", 
+                            rating = rating, 
+                            completedRides = rideCount, 
+                            onBack = { currentTab = "RADAR" }, 
+                            onLogout = { isAuth = false; prefs.edit().clear().apply() },
+                            onVerifyClicked = {
+                                chosenVerificationPath = "VERIFY_NOW"
+                                FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").setValue("VERIFY_NOW")
+                            }
+                        )
                         "HISTORY" -> DriverRideHistoryScreen(dName, onBack = { currentTab = "RADAR" })
                     }
                 }
@@ -561,19 +577,25 @@ fun VerificationChoiceScreen(driverName: String, onBack: () -> Unit) {
 
 @Composable
 fun DocumentUploadBox(title: String, uri: Uri?, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier.height(115.dp).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).clickable { onClick() },
-        contentAlignment = Alignment.Center
+    Card(
+        modifier = modifier
+            .height(115.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        if (uri != null) {
-            AsyncImage(model = uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
-            Icon(Icons.Filled.CheckCircle, null, tint = Color.White, modifier = Modifier.size(36.dp))
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Add, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ImperialBlue, textAlign = TextAlign.Center)
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            if (uri != null) {
+                AsyncImage(model = uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+                Icon(Icons.Filled.CheckCircle, null, tint = Color.White, modifier = Modifier.size(36.dp))
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.Add, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ImperialBlue, textAlign = TextAlign.Center)
+                }
             }
         }
     }
@@ -589,8 +611,13 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
     var licenseUri by remember { mutableStateOf<Uri?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
 
-    val idLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> idUri = uri }
-    val licenseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> licenseUri = uri }
+    val idLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> 
+        if (uri != null) idUri = uri 
+    }
+    
+    val licenseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> 
+        if (uri != null) licenseUri = uri 
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -625,11 +652,24 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text("Step 2: Document Photos", fontWeight = FontWeight.Bold, color = ImperialBlue)
-                Text("Tap to upload photos of your ID and License", fontSize = 12.sp, color = Color.Gray)
+                Text("Tap the boxes below to select images from your gallery.", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DocumentUploadBox("Upload ID", idUri, Modifier.weight(1f)) { if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") }
-                    DocumentUploadBox("Upload License", licenseUri, Modifier.weight(1f)) { if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") }
+                    DocumentUploadBox(
+                        title = "Upload ID", 
+                        uri = idUri, 
+                        modifier = Modifier.weight(1f)
+                    ) { 
+                        if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") 
+                    }
+                    
+                    DocumentUploadBox(
+                        title = "Upload License", 
+                        uri = licenseUri, 
+                        modifier = Modifier.weight(1f)
+                    ) { 
+                        if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") 
+                    }
                 }
             }
         }
@@ -671,7 +711,6 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                             Toast.makeText(ctx, "Documents securely uploaded to Firebase!", Toast.LENGTH_LONG).show()
                         }
                         
-                        // 🔥 FIRE TELEGRAM NOTIFICATION TO ADMIN
                         try {
                             val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nName: $driverName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
                             val urlStr = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
@@ -679,7 +718,7 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                         } catch (e: Exception) {}
                     }
                 } else {
-                    Toast.makeText(ctx, "Please complete fields and attach both photos.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Please complete text fields and attach BOTH photos.", Toast.LENGTH_LONG).show()
                 }
             }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(14.dp)) {
                 if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT FOR APPROVAL", fontWeight = FontWeight.Bold)
@@ -992,14 +1031,28 @@ fun DriverWalletScreen(driverName: String, debt: Int, credit: Int, onBack: () ->
 }
 
 @Composable
-fun DriverProfileScreen(name: String, phone: String, profilePicUrl: String?, imperialId: String, status: String, vehicleType: String, plate: String, rating: Double, completedRides: Int, onBack: () -> Unit, onLogout: () -> Unit) {
+fun DriverProfileScreen(
+    name: String, 
+    phone: String, 
+    profilePicUrl: String?, 
+    imperialId: String, 
+    status: String, 
+    vehicleType: String, 
+    plate: String, 
+    rating: Double, 
+    completedRides: Int, 
+    onBack: () -> Unit, 
+    onLogout: () -> Unit,
+    onVerifyClicked: () -> Unit
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    var localProfileUri by remember { mutableStateOf<Uri?>(null) }
     
-    // 📸 THIS IS THE NEW GALLERY LAUNCHER FOR THE SEAT PROFILE PICTURE
     val profileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            Toast.makeText(ctx, "Updating profile picture...", Toast.LENGTH_SHORT).show()
+            localProfileUri = uri
+            Toast.makeText(ctx, "Saving profile picture...", Toast.LENGTH_SHORT).show()
             scope.launch(Dispatchers.IO) {
                 val b64 = getBase64Image(ctx, uri)
                 if (b64 != null) {
@@ -1018,21 +1071,27 @@ fun DriverProfileScreen(name: String, phone: String, profilePicUrl: String?, imp
         }
         Spacer(modifier = Modifier.height(10.dp))
         
-        // PROFILE PICTURE AVATAR (CLICKABLE TO OPEN GALLERY)
-        Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.clickable { profileLauncher.launch("image/*") }) {
-            if (profilePicUrl != null && profilePicUrl.length > 200) {
-                val bitmap = decodeBase64ToBitmap(profilePicUrl)
-                if (bitmap != null) {
-                    Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.size(90.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+        Box(contentAlignment = Alignment.BottomEnd) {
+            Card(
+                modifier = Modifier.size(90.dp).clickable { profileLauncher.launch("image/*") },
+                shape = CircleShape,
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                if (localProfileUri != null) {
+                    AsyncImage(model = localProfileUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                } else if (profilePicUrl != null && profilePicUrl.length > 200) {
+                    val bitmap = decodeBase64ToBitmap(profilePicUrl)
+                    if (bitmap != null) {
+                        Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = ImperialBlue)
+                    }
+                } else if (profilePicUrl != null && profilePicUrl.startsWith("http")) {
+                    AsyncImage(model = profilePicUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
-                    Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
+                    Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(16.dp), tint = ImperialBlue)
                 }
-            } else if (profilePicUrl != null && profilePicUrl.startsWith("http")) {
-                AsyncImage(model = profilePicUrl, contentDescription = null, modifier = Modifier.size(90.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-            } else {
-                Icon(Icons.Filled.Person, null, modifier = Modifier.size(90.dp), tint = ImperialBlue)
             }
-            
             Box(modifier = Modifier.background(ImperialBlue, CircleShape).padding(6.dp)) {
                 Icon(Icons.Filled.Edit, contentDescription = "Edit Profile Pic", modifier = Modifier.size(16.dp), tint = Color.White)
             }
@@ -1067,9 +1126,7 @@ fun DriverProfileScreen(name: String, phone: String, profilePicUrl: String?, imp
         if (status == "UNVERIFIED") {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = { 
-                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$name/verificationPath").setValue("VERIFY_NOW") 
-                }, 
+                onClick = { onVerifyClicked() }, 
                 modifier = Modifier.fillMaxWidth().height(45.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue),
                 shape = RoundedCornerShape(12.dp)
