@@ -85,8 +85,14 @@ val ImperialRed = Color(0xFFD50000)
 val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
 val GoldYellow = Color(0xFFFFB300)
+
+// 🤖 BOT CREDENTIALS
 const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
 const val CHAT_ID = "5232430147"
+
+// 🤖 CASHIER BOT CREDENTIALS (Used for Document Uploads)
+const val CASHIER_BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94" 
+const val CASHIER_CHAT_ID = "5232430147"
 
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
@@ -260,9 +266,13 @@ fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
             )
         }
     } else {
+        // 🔥 Rebuilt Routing Logic for flawless back navigation
+        val isLockedOut = driverStatus != "VERIFIED" && rideCount >= 10
+        val isManuallyVerifying = chosenVerificationPath == "VERIFY_NOW"
+
         if (vehicleType.isNullOrEmpty() || carPlate.isNullOrEmpty()) {
             VehicleGateScreen(driverName = dName, onBack = { isAuth = false; prefs.edit().clear().apply() })
-        } else if (driverStatus != "VERIFIED" && (chosenVerificationPath == "VERIFY_NOW" || rideCount >= 10 || driverStatus == "PENDING_APPROVAL")) {
+        } else if (isLockedOut || isManuallyVerifying) {
             CommissioningPortalScreen(driverName = dName, driverStatus = driverStatus, rideCount = rideCount, imperialId = imperialId, onBack = { 
                 chosenVerificationPath = null
                 FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$dName/verificationPath").removeValue()
@@ -605,6 +615,7 @@ fun DocumentUploadBox(title: String, uri: Uri?, modifier: Modifier = Modifier, o
 fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCount: Int, imperialId: String, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    var fullName by remember { mutableStateOf(driverName) }
     var nationalId by remember { mutableStateOf("") }
     var licenseNumber by remember { mutableStateOf("") }
     var idUri by remember { mutableStateOf<Uri?>(null) }
@@ -621,7 +632,13 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
+            IconButton(onClick = { 
+                if (rideCount >= 10 && driverStatus != "VERIFIED") {
+                    Toast.makeText(ctx, "Verification required to continue using the app.", Toast.LENGTH_SHORT).show()
+                } else {
+                    onBack() 
+                }
+            }) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = ImperialBlue) }
             Text("COMMISSIONING", fontSize = 20.sp, fontWeight = FontWeight.Black, color = ImperialBlue, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(20.dp))
@@ -631,7 +648,7 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("⏳ STATUS: PENDING APPROVAL", fontWeight = FontWeight.Black, color = Color(0xFFB45309))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Your commissioning application is under active administrative review. You will receive your Imperial Driver ID upon verification.", fontSize = 13.sp, color = Color(0xFF92400E), textAlign = TextAlign.Center)
+                    Text("Your application is under review. If you need to make corrections, you can re-upload your photos below.", fontSize = 13.sp, color = Color(0xFF92400E), textAlign = TextAlign.Center)
                 }
             }
             Spacer(modifier = Modifier.height(25.dp))
@@ -641,9 +658,11 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
             Column(modifier = Modifier.padding(18.dp)) {
                 Text("Step 1: Driver Credentials", fontWeight = FontWeight.Bold, color = ImperialBlue)
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = nationalId, onValueChange = { nationalId = it }, label = { Text("National ID / FAYDA Number") }, modifier = Modifier.fillMaxWidth(), enabled = driverStatus != "PENDING_APPROVAL")
+                OutlinedTextField(value = fullName, onValueChange = { fullName = it }, label = { Text("Full Legal Name (As on ID)") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = licenseNumber, onValueChange = { licenseNumber = it }, label = { Text("Driver License Number") }, modifier = Modifier.fillMaxWidth(), enabled = driverStatus != "PENDING_APPROVAL")
+                OutlinedTextField(value = nationalId, onValueChange = { nationalId = it }, label = { Text("National ID / FAYDA Number") }, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(value = licenseNumber, onValueChange = { licenseNumber = it }, label = { Text("Driver License Number") }, modifier = Modifier.fillMaxWidth())
             }
         }
 
@@ -655,21 +674,8 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                 Text("Tap the boxes below to select images from your gallery.", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DocumentUploadBox(
-                        title = "Upload ID", 
-                        uri = idUri, 
-                        modifier = Modifier.weight(1f)
-                    ) { 
-                        if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") 
-                    }
-                    
-                    DocumentUploadBox(
-                        title = "Upload License", 
-                        uri = licenseUri, 
-                        modifier = Modifier.weight(1f)
-                    ) { 
-                        if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") 
-                    }
+                    DocumentUploadBox("Upload ID", idUri, Modifier.weight(1f)) { idLauncher.launch("image/*") }
+                    DocumentUploadBox("Upload License", licenseUri, Modifier.weight(1f)) { licenseLauncher.launch("image/*") }
                 }
             }
         }
@@ -689,40 +695,41 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        if (driverStatus != "PENDING_APPROVAL") {
-            Button(onClick = {
-                if (nationalId.isNotEmpty() && licenseNumber.isNotEmpty() && idUri != null && licenseUri != null) {
-                    isSubmitting = true
-                    scope.launch(Dispatchers.IO) {
-                        val idB64 = getBase64Image(ctx, idUri!!) ?: ""
-                        val licB64 = getBase64Image(ctx, licenseUri!!) ?: ""
-                        
-                        val updateMap = mapOf(
-                            "nationalId" to nationalId,
-                            "licenseNumber" to licenseNumber,
-                            "idPhotoBase64" to idB64,
-                            "licensePhotoBase64" to licB64,
-                            "status" to "PENDING_APPROVAL",
-                            "submittedAt" to System.currentTimeMillis()
-                        )
-                        
-                        FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(updateMap).addOnCompleteListener { 
-                            isSubmitting = false
-                            Toast.makeText(ctx, "Documents securely uploaded to Firebase!", Toast.LENGTH_LONG).show()
-                        }
-                        
-                        try {
-                            val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nName: $driverName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
-                            val urlStr = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
-                            URL(urlStr).readText()
-                        } catch (e: Exception) {}
+        Button(onClick = {
+            if (fullName.isNotEmpty() && nationalId.isNotEmpty() && licenseNumber.isNotEmpty() && idUri != null && licenseUri != null) {
+                isSubmitting = true
+                scope.launch(Dispatchers.IO) {
+                    val idB64 = getBase64Image(ctx, idUri!!) ?: ""
+                    val licB64 = getBase64Image(ctx, licenseUri!!) ?: ""
+                    
+                    val updateMap = mapOf(
+                        "fullName" to fullName,
+                        "nationalId" to nationalId,
+                        "licenseNumber" to licenseNumber,
+                        "idPhotoBase64" to idB64,
+                        "licensePhotoBase64" to licB64,
+                        "status" to "PENDING_APPROVAL",
+                        "submittedAt" to System.currentTimeMillis()
+                    )
+                    
+                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(updateMap).addOnCompleteListener { 
+                        isSubmitting = false
+                        FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName/verificationPath").removeValue()
+                        Toast.makeText(ctx, "Documents securely uploaded to Firebase!", Toast.LENGTH_LONG).show()
+                        onBack()
                     }
-                } else {
-                    Toast.makeText(ctx, "Please complete text fields and attach BOTH photos.", Toast.LENGTH_LONG).show()
+                    
+                    try {
+                        val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nApp Login Name: $driverName\nLegal Name: $fullName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
+                        val urlStr = "https://api.telegram.org/bot$CASHIER_BOT_TOKEN/sendMessage?chat_id=$CASHIER_CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
+                        URL(urlStr).readText()
+                    } catch (e: Exception) {}
                 }
-            }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(14.dp)) {
-                if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT FOR APPROVAL", fontWeight = FontWeight.Bold)
+            } else {
+                Toast.makeText(ctx, "Please complete all text fields and attach BOTH photos.", Toast.LENGTH_LONG).show()
             }
+        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(14.dp)) {
+            if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT FOR APPROVAL", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1123,7 +1130,7 @@ fun DriverProfileScreen(
             ) 
         }
 
-        if (status == "UNVERIFIED") {
+        if (status == "UNVERIFIED" || status == "PENDING_APPROVAL") {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { onVerifyClicked() }, 
@@ -1131,7 +1138,7 @@ fun DriverProfileScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("COMPLETE VERIFICATION", fontWeight = FontWeight.Bold)
+                Text(if (status == "PENDING_APPROVAL") "UPDATE VERIFICATION DOCS" else "COMPLETE VERIFICATION", fontWeight = FontWeight.Bold)
             }
         }
 
