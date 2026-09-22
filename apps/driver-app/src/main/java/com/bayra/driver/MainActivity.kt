@@ -139,6 +139,21 @@ fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status:
     }
 }
 
+fun getBase64Image(ctx: Context, uri: Uri): String? {
+    return try {
+        val inputStream = ctx.contentResolver.openInputStream(uri)
+        val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+        val maxDim = 600
+        val scale = java.lang.Math.min(maxDim.toFloat() / originalBitmap.width, maxDim.toFloat() / originalBitmap.height)
+        val scaledWidth = java.lang.Math.round(scale * originalBitmap.width)
+        val scaledHeight = java.lang.Math.round(scale * originalBitmap.height)
+        val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
+        val outputStream = java.io.ByteArrayOutputStream()
+        scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
+        android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
+    } catch (e: Exception) { null }
+}
+
 @Composable
 fun DriverAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     val ctx = LocalContext.current
@@ -535,11 +550,37 @@ fun VerificationChoiceScreen(driverName: String, onBack: () -> Unit) {
 }
 
 @Composable
+fun RowScope.DocumentUploadBox(title: String, uri: Uri?, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.weight(1f).height(115.dp).background(Color(0xFFE2E8F0), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        if (uri != null) {
+            AsyncImage(model = uri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+            Icon(Icons.Filled.CheckCircle, null, tint = Color.White, modifier = Modifier.size(36.dp))
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.AddPhotoAlternate, null, tint = ImperialBlue, modifier = Modifier.size(28.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ImperialBlue, textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+@Composable
 fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCount: Int, imperialId: String, onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var nationalId by remember { mutableStateOf("") }
     var licenseNumber by remember { mutableStateOf("") }
+    var idUri by remember { mutableStateOf<Uri?>(null) }
+    var licenseUri by remember { mutableStateOf<Uri?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
+
+    val idLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> idUri = uri }
+    val licenseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? -> licenseUri = uri }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -571,9 +612,23 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)), shape = RoundedCornerShape(14.dp)) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text("Step 2: Document Photos", fontWeight = FontWeight.Bold, color = ImperialBlue)
+                Text("Tap to upload photos of your ID and License", fontSize = 12.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DocumentUploadBox("Upload ID\nPhoto", idUri) { if(driverStatus != "PENDING_APPROVAL") idLauncher.launch("image/*") }
+                    DocumentUploadBox("Upload License\nPhoto", licenseUri) { if(driverStatus != "PENDING_APPROVAL") licenseLauncher.launch("image/*") }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), shape = RoundedCornerShape(14.dp)) {
             Column(modifier = Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Step 2: Mandatory Interview Gateway", fontWeight = FontWeight.Bold, color = ImperialBlue)
+                Text("Step 3: Mandatory Interview Gateway", fontWeight = FontWeight.Bold, color = ImperialBlue)
                 Text("Join the Council's official driver verification group", fontSize = 12.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(14.dp))
                 Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF229ED9)), modifier = Modifier.fillMaxWidth()) {
@@ -586,10 +641,28 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
 
         if (driverStatus != "PENDING_APPROVAL") {
             Button(onClick = {
-                if (nationalId.isNotEmpty() && licenseNumber.isNotEmpty()) {
+                if (nationalId.isNotEmpty() && licenseNumber.isNotEmpty() && idUri != null && licenseUri != null) {
                     isSubmitting = true
-                    FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(mapOf("nationalId" to nationalId, "licenseNumber" to licenseNumber, "status" to "PENDING_APPROVAL", "submittedAt" to System.currentTimeMillis())).addOnCompleteListener { isSubmitting = false }
-                } else Toast.makeText(ctx, "Please complete license & ID credentials.", Toast.LENGTH_SHORT).show()
+                    scope.launch(Dispatchers.IO) {
+                        val idB64 = getBase64Image(ctx, idUri!!) ?: ""
+                        val licB64 = getBase64Image(ctx, licenseUri!!) ?: ""
+                        
+                        val updateMap = mapOf(
+                            "nationalId" to nationalId,
+                            "licenseNumber" to licenseNumber,
+                            "idPhotoBase64" to idB64,
+                            "licensePhotoBase64" to licB64,
+                            "status" to "PENDING_APPROVAL",
+                            "submittedAt" to System.currentTimeMillis()
+                        )
+                        
+                        FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName").updateChildren(updateMap).addOnCompleteListener { 
+                            isSubmitting = false 
+                        }
+                    }
+                } else {
+                    Toast.makeText(ctx, "Please complete fields and attach both photos.", Toast.LENGTH_SHORT).show()
+                }
             }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = ImperialBlue), shape = RoundedCornerShape(14.dp)) {
                 if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT FOR APPROVAL", fontWeight = FontWeight.Bold)
             }
