@@ -3,40 +3,219 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const SERVER_START_TIME = Date.now();
 
-// --- FIREBASE INITIALIZATION ---
+// =================================================================
+// 🤖 1. BOT & CREDENTIAL CONFIGURATION
+// =================================================================
+
+// 👇 1. CASHIER BOT (For Deposits, Withdrawals, and Inline Buttons)
+const HARDCODED_CASHIER_TOKEN = 8906238578:AAFFDlT77X5Tj-NaL6fa1WizmpB0UPYZSvs";
+const HARDCODED_CASHIER_CHAT_ID = "5232430147"; 
+
+// 👇 2. VERIFICATION BOT (For ID, License Photos, and Driver Reviews)
+const HARDCODED_VERIFY_TOKEN = 8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
+const HARDCODED_VERIFY_CHAT_ID = "5232430147"; // Change if you want verifications sent to a different chat
+
+// Apply tokens safely
+const CASHIER_BOT_TOKEN = (process.env.CASHIER_BOT_TOKEN || HARDCODED_CASHIER_TOKEN).trim().replace(/['"]/g, '');
+const CASHIER_CHAT_ID = (process.env.CASHIER_CHAT_ID || HARDCODED_CASHIER_CHAT_ID).trim().replace(/['"]/g, '');
+
+const VERIFICATION_BOT_TOKEN = (process.env.VERIFICATION_BOT_TOKEN || HARDCODED_VERIFY_TOKEN).trim().replace(/['"]/g, '');
+const VERIFICATION_CHAT_ID = (process.env.VERIFICATION_CHAT_ID || HARDCODED_VERIFY_CHAT_ID).trim().replace(/['"]/g, '');
+
+// =================================================================
+// 🛠️ 2. TELEGRAM API HELPERS
+// =================================================================
+async function sendCashierMessageWithButtons(text, inlineKeyboard) {
+    try {
+        await axios.post(`https://api.telegram.org/bot${CASHIER_BOT_TOKEN}/sendMessage`, {
+            chat_id: CASHIER_CHAT_ID,
+            text: text,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: inlineKeyboard }
+        });
+    } catch (e) {
+        console.error("❌ Telegram Send Button Error:", e.response?.data?.description || e.message);
+    }
+}
+
+async function editTelegramMessage(chatId, messageId, newText) {
+    try {
+        await axios.post(`https://api.telegram.org/bot${CASHIER_BOT_TOKEN}/editMessageText`, {
+            chat_id: chatId,
+            message_id: messageId,
+            text: newText,
+            parse_mode: 'HTML'
+        });
+    } catch (e) {}
+}
+
+async function answerTelegramCallback(callbackQueryId, notificationText) {
+    try {
+        await axios.post(`https://api.telegram.org/bot${CASHIER_BOT_TOKEN}/answerCallbackQuery`, {
+            callback_query_id: callbackQueryId,
+            text: notificationText
+        });
+    } catch (e) {}
+}
+
+async function setupTelegramWebhook() {
+    try {
+        const webhookUrl = `https://bayra-backend-eu.onrender.com/telegram-webhook`;
+        const res = await axios.post(`https://api.telegram.org/bot${CASHIER_BOT_TOKEN}/setWebhook`, { url: webhookUrl });
+        console.log(`🤖 Cashier Webhook active at: ${webhookUrl} (Result: ${res.data.description})`);
+    } catch (e) {
+        console.error("❌ Webhook setup error. Token starts with:", CASHIER_BOT_TOKEN.substring(0, 8), "Error:", e.response?.data?.description || e.message);
+    }
+}
+
+// =================================================================
+// 🔥 3. FIREBASE INITIALIZATION & WATCHERS
+// =================================================================
 let db;
 try {
-    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing!");
-    }
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY is missing!");
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY)),
         databaseURL: "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
     });
     db = admin.database();
     console.log("✅ Firebase Admin Connected.");
+    
     activateImperialWatchman();
     activatePopupScheduler();
-} catch (error) {
-    console.error("❌ FIREBASE INIT FAILED:", error.message);
+    activateDriverVerificationWatcher();
+    activateCashierFinanceWatchers();
+    setupTelegramWebhook();
+} catch (error) { console.error("❌ FIREBASE INIT FAILED:", error.message); }
+
+// =================================================================
+// 🏦 4. FINANCE WATCHERS (DEPOSITS & WITHDRAWALS)
+// =================================================================
+function activateCashierFinanceWatchers() {
+    console.log("💰 Cashier Finance Watcher is ACTIVE.");
+
+    db.ref('withdrawals').on('child_added', async (snapshot) => {
+        const wdr = snapshot.val();
+        if (wdr && wdr.status === "PENDING" && wdr.requestedAt > (SERVER_START_TIME - 60000)) {
+            if (wdr.notifiedCashier) return;
+            await snapshot.ref.update({ notifiedCashier: true });
+
+            const text = `🏦 <b>NEW WITHDRAWAL REQUEST</b>\n\n👤 <b>Driver:</b> ${wdr.driverName}\n💵 <b>Amount:</b> <b>${wdr.amount} ETB</b>\n🏛️ <b>Destination:</b> ${wdr.bank}\n🔢 <b>Account:</b> <code>${wdr.account}</code>\n👤 <b>Holder Name:</b> ${wdr.accountHolder}\n⏰ <b>Time:</b> ${new Date(wdr.requestedAt).toLocaleTimeString('en-US', { timeZone: 'Africa/Addis_Ababa' })}`;
+            const buttons = [[ { text: "✅ Approve & Deduct", callback_data: `wdr_app:${snapshot.key}` }, { text: "❌ Decline", callback_data: `wdr_dec:${snapshot.key}` } ]];
+            await sendCashierMessageWithButtons(text, buttons);
+        }
+    });
+
+    db.ref('deposits_pending').on('child_added', async (snapshot) => {
+        const dep = snapshot.val();
+        if (dep && dep.submittedAt > (SERVER_START_TIME - 60000)) {
+            if (dep.notifiedCashier) return;
+            await snapshot.ref.update({ notifiedCashier: true });
+
+            const text = `💵 <b>NEW COMMISSION DEPOSIT PROOF</b>\n\n👤 <b>Driver:</b> ${dep.driverName}\n💰 <b>Amount Settled:</b> ${dep.amountDue || 'Custom'} ETB\n\n📩 <b>Pasted SMS Proof:</b>\n<code>${dep.smsProof}</code>\n\nApprove this deposit to deduct their debt and keep Radar active?`;
+            const buttons = [[ { text: "✅ Approve Deposit", callback_data: `dep_app:${snapshot.key}` }, { text: "❌ Decline", callback_data: `dep_dec:${snapshot.key}` } ]];
+            await sendCashierMessageWithButtons(text, buttons);
+        }
+    });
 }
 
-const BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
-const CHAT_ID = "5232430147";
+// =================================================================
+// 🔘 5. TELEGRAM BOT WEBHOOK (BUTTON CLICKS)
+// =================================================================
+app.post('/telegram-webhook', async (req, res) => {
+    res.status(200).send("OK");
+    const update = req.body;
+    if (!update.callback_query) return;
 
-// --- DISPATCH LOGISTICS (IMPERIAL WATCHMAN) ---
+    const query = update.callback_query;
+    const data = query.data;
+    const [action, targetId] = data.split(':');
+    const chatId = query.message.chat.id;
+    const messageId = query.message.message_id;
+
+    if (action === "wdr_app") {
+        const snap = await db.ref(`withdrawals/${targetId}`).once('value');
+        if (!snap.exists()) return answerTelegramCallback(query.id, "Request not found!");
+        const wdr = snap.val();
+        if (wdr.status !== "PENDING") return answerTelegramCallback(query.id, `Already ${wdr.status}!`);
+
+        const driverRef = db.ref(`drivers/${wdr.driverName}`);
+        const curCredit = Number((await driverRef.child('credit').once('value')).val() || 0);
+        await driverRef.update({ credit: Math.max(0, curCredit - Number(wdr.amount || 0)) });
+        await snap.ref.update({ status: "APPROVED", resolvedAt: Date.now() });
+
+        const token = (await driverRef.child('fcmToken').once('value')).val();
+        if (token) sendPush(token, "✅ Withdrawal Approved!", `${wdr.amount} ETB has been disbursed to your ${wdr.bank} account.`);
+        
+        await answerTelegramCallback(query.id, "Approved & Deducted!");
+        await editTelegramMessage(chatId, messageId, `${query.message.text}\n\n✅ <b>APPROVED BY CASHIER</b>\n💳 Deducted ${wdr.amount} ETB.`);
+    }
+    else if (action === "wdr_dec") {
+        const snap = await db.ref(`withdrawals/${targetId}`).once('value');
+        await snap.ref.update({ status: "DECLINED", resolvedAt: Date.now() });
+        const token = (await db.ref(`drivers/${snap.val().driverName}/fcmToken`).once('value')).val();
+        if (token) sendPush(token, "❌ Withdrawal Declined", `Your withdrawal of ${snap.val().amount} ETB was declined.`);
+        
+        await answerTelegramCallback(query.id, "Declined.");
+        await editTelegramMessage(chatId, messageId, `${query.message.text}\n\n❌ <b>DECLINED BY CASHIER</b>`);
+    }
+    else if (action === "dep_app") {
+        const snap = await db.ref(`deposits_pending/${targetId}`).once('value');
+        if (!snap.exists()) return answerTelegramCallback(query.id, "Deposit proof not found!");
+
+        const dep = snap.val();
+        const driverRef = db.ref(`drivers/${dep.driverName}`);
+        const curDebt = Number((await driverRef.child('debt').once('value')).val() || 0);
+        const settledAmount = Number(dep.amountDue || 0);
+        
+        await driverRef.update({ debt: Math.max(0, curDebt - settledAmount) });
+        await snap.ref.remove();
+
+        const token = (await driverRef.child('fcmToken').once('value')).val();
+        if (token) sendPush(token, "🔓 Deposit Reconciled!", "Your deposit has been verified. Radar is unlocked!");
+
+        await answerTelegramCallback(query.id, "Deposit Approved!");
+        await editTelegramMessage(chatId, messageId, `${query.message.text}\n\n✅ <b>DEPOSIT APPROVED</b>\n🔓 Debt reduced by ${settledAmount} ETB.`);
+    }
+    else if (action === "dep_dec") {
+        const snap = await db.ref(`deposits_pending/${targetId}`).once('value');
+        await snap.ref.remove();
+        const token = (await db.ref(`drivers/${snap.val().driverName}/fcmToken`).once('value')).val();
+        if (token) sendPush(token, "⚠️ Deposit Rejected", "Your bank SMS proof could not be verified.");
+
+        await answerTelegramCallback(query.id, "Deposit Declined.");
+        await editTelegramMessage(chatId, messageId, `${query.message.text}\n\n❌ <b>SMS PROOF REJECTED</b>`);
+    }
+});
+
+// =================================================================
+// 🛡️ 6. DRIVER VERIFICATION WATCHER (Sends to Verification Bot)
+// =================================================================
+function activateDriverVerificationWatcher() {
+    console.log("🛡️ Driver Verification Watcher is ACTIVE.");
+
+    db.ref('drivers').on('child_changed', async (snapshot) => {
+        const driver = snapshot.val();
+        if (driver && driver.status === "PENDING_APPROVAL" && driver.submittedAt && driver.submittedAt > (SERVER_START_TIME - 60000)) {
+            if (driver.notifiedVerificationBot) return;
+            await snapshot.ref.update({ notifiedVerificationBot: true });
+
+            const msg = `🚨 <b>NEW DRIVER VERIFICATION REQUEST</b>\n\n👤 <b>App Name:</b> ${snapshot.key}\n📝 <b>Legal Name:</b> ${driver.fullName || driver.name || 'N/A'}\n📞 <b>Phone:</b> <code>${driver.phone || 'N/A'}</code>\n🪪 <b>National ID / FAYDA:</b> <code>${driver.nationalId || 'N/A'}</code>\n🚗 <b>Driver License:</b> <code>${driver.licenseNumber || 'N/A'}</code>\n🛺 <b>Vehicle:</b> ${driver.vehicleType || 'BAJAJ'} (${driver.carPlate || 'N/A'})\n\n📸 <b>ID & License Photos:</b> Uploaded to Database\n🔗 <a href="https://console.firebase.google.com/project/bayra-84ecf/database/bayra-84ecf-default-rtdb/data/drivers/${encodeURIComponent(snapshot.key)}">Click here to Review & Set to VERIFIED</a>`;
+            try { await axios.post(`https://api.telegram.org/bot${VERIFICATION_BOT_TOKEN}/sendMessage`, { chat_id: VERIFICATION_CHAT_ID, text: msg, parse_mode: 'HTML' }); } catch (e) {}
+        }
+    });
+}
+
+// =================================================================
+// 🚕 7. DISPATCH LOGISTICS (IMPERIAL WATCHMAN)
+// =================================================================
 function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const R = 6371; const dLat = (lat2 - lat1) * Math.PI / 180; const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
@@ -51,10 +230,7 @@ function activateImperialWatchman() {
                 const driver = child.val();
                 if (driver.fcmToken && driver.lat && driver.lon) {
                     const dist = getDistance(ride.pLat, ride.pLon, driver.lat, driver.lon);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestDriver = { name: child.key, token: driver.fcmToken };
-                    }
+                    if (dist < minDistance) { minDistance = dist; closestDriver = { name: child.key, token: driver.fcmToken }; }
                 }
             });
 
@@ -68,9 +244,7 @@ function activateImperialWatchman() {
                         broadcastToDrivers("🚨 New Dispatch!", `New ${currentRide.tier} available for all drivers!`);
                     }
                 }, 25000);
-            } else {
-                broadcastToDrivers("🚨 New Dispatch!", `A new ${ride.tier} request is waiting.`);
-            }
+            } else { broadcastToDrivers("🚨 New Dispatch!", `A new ${ride.tier} request is waiting.`); }
         }
     });
 
@@ -86,19 +260,13 @@ function activatePopupScheduler() {
     setInterval(async () => {
         try {
             const snap = await db.ref('app_config/active_popup').once('value');
-            if (snap.exists()) {
-                const popup = snap.val();
-                if (popup.expiresAt && Date.now() > popup.expiresAt) await snap.ref.remove();
-            }
+            if (snap.exists()) { const popup = snap.val(); if (popup.expiresAt && Date.now() > popup.expiresAt) await snap.ref.remove(); }
         } catch (e) {}
     }, 60000);
 }
 
 async function sendToUser(userName, title, body) {
-    try {
-        const token = (await db.ref(`users/${userName}`).once('value')).val()?.fcmToken;
-        if (token) sendPush(token, title, body);
-    } catch (e) {}
+    try { const token = (await db.ref(`users/${userName}`).once('value')).val()?.fcmToken; if (token) sendPush(token, title, body); } catch (e) {}
 }
 
 async function broadcastToDrivers(title, body) {
@@ -112,241 +280,56 @@ async function sendPush(token, title, body) {
     try { await admin.messaging().send({ notification: { title, body }, token: token, android: { priority: "high", notification: { sound: "default", channelId: "bayra_alerts" } } }); } catch (e) {}
 }
 
-// --- TELEGRAM GATEWAY (WEB & APP) ---
+// =================================================================
+// 📲 8. TELEGRAM GATEWAY (OTP DISPATCH)
+// =================================================================
 async function dispatchTelegramGatewayVerification(phone, pin) {
     let formattedPhone = phone.trim();
     if (formattedPhone.startsWith('0')) formattedPhone = '+251' + formattedPhone.substring(1);
     else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
-
     return await axios.post('https://gatewayapi.telegram.org/sendVerificationMessage', { phone_number: formattedPhone, code: pin }, { headers: { 'Authorization': `Bearer ${process.env.TELEGRAM_GATEWAY_KEY}`, 'Content-Type': 'application/json' } });
 }
 
 app.post('/send-telegram-code', async (req, res) => {
     const { phone, pin } = req.body;
-    try {
-        await dispatchTelegramGatewayVerification(phone, pin);
-        res.status(200).json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+    try { await dispatchTelegramGatewayVerification(phone, pin); res.status(200).json({ success: true }); } 
+    catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.post('/api/web-send-pin', async (req, res) => {
     const { phone } = req.body;
     if (!phone || phone.length < 9) return res.status(400).json({ success: false, message: "Invalid phone number." });
-
     try {
         let isDriver = true;
         let snap = await db.ref(`drivers/${phone}`).once('value');
         if (!snap.exists()) {
             isDriver = false;
             snap = await db.ref(`users/${phone}`).once('value');
-            if (!snap.exists()) return res.status(404).json({ success: false, message: "Phone number not registered in Bayra Travel." });
+            if (!snap.exists()) return res.status(404).json({ success: false, message: "Phone number not registered." });
         }
-
         const pin = Math.floor(100000 + Math.random() * 900000).toString();
         await db.ref(`verifications/${phone}/code`).set(pin);
         await dispatchTelegramGatewayVerification(phone, pin);
         res.status(200).json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, message: "Gateway error. Please try again." });
-    }
+    } catch (e) { res.status(500).json({ success: false, message: "Gateway error." }); }
 });
 
 app.post('/api/web-reset-password', async (req, res) => {
     const { phone, code, newPassword } = req.body;
     if (!phone || !code || !newPassword) return res.status(400).json({ success: false, message: "Missing fields" });
-
     try {
         const storedCode = (await db.ref(`verifications/${phone}/code`).once('value')).val();
         if (storedCode == code || code === "123456") {
             let snap = await db.ref(`drivers/${phone}`).once('value');
             if (snap.exists()) await db.ref(`drivers/${phone}/password`).set(newPassword);
             else await db.ref(`users/${phone}/password`).set(newPassword);
-            res.status(200).json({ success: true, message: "Password updated successfully!" });
-        } else {
-            res.status(400).json({ success: false, message: "Invalid verification code." });
-        }
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
+            res.status(200).json({ success: true, message: "Password updated!" });
+        } else { res.status(400).json({ success: false, message: "Invalid verification code." }); }
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// --- POPUPS & CHAPA ---
-app.post('/send-popup', async (req, res) => {
-    const { title, text, imageUrl, popupId, endDate } = req.body;
-    if (!title || !imageUrl || !popupId) return res.status(400).json({ success: false, error: "Missing payload" });
-
-    try {
-        let expiryTimestamp = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : null;
-        await db.ref('app_config/active_popup').set({ id: popupId, title, text, imageUrl, timestamp: Date.now(), expiresAt: expiryTimestamp });
-        res.status(200).json({ success: true, message: "Pop-up live!" });
-    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
-});
-
-app.post('/clear-popup', async (req, res) => {
-    try {
-        await db.ref('app_config/active_popup').remove();
-        res.status(200).json({ success: true, message: "Pop-up stopped." });
-    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
-});
-
-const CHAPA_URL = "https://api.chapa.co/v1/transaction/initialize";
-const CHAPA_AUTH = { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } };
-
-app.post('/initialize-payment', async (req, res) => {
-    const { amount, email, name, rideId } = req.body;
-    const tx_ref = `TX-${rideId}-${Date.now()}`;
-    try {
-        const response = await axios.post(CHAPA_URL, { amount, currency: "ETB", email, first_name: name, tx_ref, callback_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}`, return_url: `https://bayra-backend-eu.onrender.com/verify-payment/${rideId}/${tx_ref}` }, CHAPA_AUTH);
-        res.json({ status: "success", data: { checkout_url: response.data.data.checkout_url } });
-    } catch (e) { res.status(500).json({ status: "failed" }); }
-});
-
-app.get('/verify-payment/:rideId/:txRef', async (req, res) => {
-    const { rideId, txRef } = req.params;
-    try {
-        const check = await axios.get(`https://api.chapa.co/v1/transaction/verify/${txRef}`, CHAPA_AUTH);
-        if (check.data.status === "success" || check.data.data.status === "success") {
-            await db.ref(`rides/${rideId}`).update({ status: "PAID_CHAPA", verifiedByBackend: true });
-            res.send("<h1 style='text-align:center; margin-top:20%; color:green;'>✅ Payment Confirmed!</h1>");
-        } else {
-            res.send("<h1 style='text-align:center; margin-top:20%; color:red;'>🛑 Payment Not Verified.</h1>");
-        }
-    } catch (error) { res.status(500).send("<h1>Verification error.</h1>"); }
-});
-
-app.get('/reset-password', (req, res) => {
-    res.send(`<!DOCTYPE html><html><head><script>setTimeout(function() { window.location.href = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.bayra.customer;B.recover=true;S.route=recovery;end"; }, 400);</script></head><body>Redirecting...</body></html>`);
-});
-
-// 🔥 DUAL DISPATCH: SEPARATE DRIVER AND PASSENGER EXECUTIVE BRIEFINGS
-app.post('/login-security-alert', async (req, res) => {
-    const { email, name, phone, status, device, appType } = req.body;
-
-    if (!email || !status) return res.status(400).json({ success: false, error: "Missing fields" });
-    res.status(200).json({ success: true, message: `Security dispatch queued.` });
-
-    const isSuccess = status.toUpperCase() === "SUCCESS";
-    const isDriver = appType === "DRIVER"; 
-    
-    const dateFormatted = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Africa/Addis_Ababa' });
-    const timeFormatted = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Addis_Ababa' });
-    const fullDateTime = `${dateFormatted} • ${timeFormatted}`;
-
-    let resolvedPhone = phone;
-    if (!resolvedPhone || resolvedPhone === "Not Provided" || resolvedPhone === "N/A") {
-        try {
-            const targetDb = isDriver ? 'drivers' : 'users';
-            const snap = await db.ref(targetDb).once('value');
-            snap.forEach((child) => {
-                const u = child.val();
-                if (u && u.email && u.email.toLowerCase() === email.toLowerCase()) resolvedPhone = child.key || u.phone;
-            });
-        } catch (e) {}
-    }
-    if (!resolvedPhone) resolvedPhone = "Available in Database";
-
-    // 1️⃣ THE CUSTOMER / DRIVER PERSONAL EMAIL (Remains branded correctly)
-    const personalHtml = `
-    <!DOCTYPE html>
-    <html>
-    <body style="margin: 0; padding: 20px 10px; background-color: #f4f6fb; font-family: sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-            <table width="100%" style="max-width: 560px; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #eef0f6;">
-                <tr><td style="background-color: #1A237E; padding: 32px 25px; text-align: center;">
-                    <h1 style="color: #ffffff; margin: 0; font-size: 24px;">BAYRA TRAVEL</h1>
-                    <p style="color: #c5cae9; margin: 6px 0 0 0; font-size: 13px;">${isDriver ? "THE IMPERIAL FLEET" : "SOUTHERN ETHIOPIA'S MOST TRUSTED RIDE PLATFORM"}</p>
-                </td></tr>
-                <tr><td style="padding: 35px 30px;">
-                    <h2 style="color: #0f172a; margin-top: 0;">Welcome, ${name}! 👋</h2>
-                    <p style="color: #475569;">Your account sign-in was successfully confirmed.</p>
-                    <div style="background-color: #f8fafc; border-left: 4px solid #2e7d32; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
-                        <p style="margin: 0 0 14px 0; color: #166534; font-weight: 700; font-size: 14px;">🛡️ SIGN-IN VERIFIED</p>
-                        <p><strong>Device:</strong> ${device || 'Android Smartphone'}</p>
-                        <p><strong>Time:</strong> ${fullDateTime}</p>
-                    </div>
-                </td></tr>
-            </table>
-        </td></tr></table>
-    </body>
-    </html>
-    `;
-
-    // 2️⃣ THE EXECUTIVE DIRECTOR BRIEFING (Color Coded by App Type!)
-    const directorSubject = isSuccess
-        ? `📈 [${isDriver ? 'DRIVER FLEET' : 'PASSENGER'}] Login Success: ${name} (${resolvedPhone})`
-        : `🚨 [${isDriver ? 'DRIVER FLEET' : 'PASSENGER'}] Login FAILED: ${name} (${resolvedPhone})`;
-
-    // Golden for Drivers, Blue for Passengers
-    const themeColor = isDriver ? '#B45309' : '#1A237E'; 
-    const badgeColor = isSuccess ? '#e8f5e9' : '#ffebee';
-    const textColor = isSuccess ? '#2e7d32' : '#c62828';
-
-    const directorHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: auto; border: 2px solid ${isSuccess ? themeColor : '#D50000'}; border-radius: 16px; overflow: hidden; background: #ffffff;">
-            <div style="background-color: ${isSuccess ? themeColor : '#D50000'}; padding: 22px 25px; color: #ffffff;">
-                <h2 style="margin: 0; font-size: 20px;">👑 BAYRA EXECUTIVE DISPATCH</h2>
-                <p style="margin: 4px 0 0 0; font-size: 12px; color: rgba(255,255,255,0.85);">MANAGEMENT & CUSTOMER RETENTION DASHBOARD</p>
-            </div>
-            <div style="padding: 25px;">
-                <div style="background-color: ${badgeColor}; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
-                    <p style="margin: 0; color: ${textColor}; font-weight: bold; font-size: 14px;">
-                        ${isSuccess ? `✅ Active ${isDriver ? 'Fleet Driver' : 'Passenger'} Session Confirmed` : `🛑 FAILED LOGIN — ${isDriver ? 'DRIVER' : 'PASSENGER'} UNABLE TO ACCESS ACCOUNT`}
-                    </p>
-                </div>
-
-                <table width="100%" style="font-size: 14px; border-collapse: collapse;">
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 10px 0; color: #64748b;"><strong>Account Type:</strong></td>
-                        <td style="padding: 10px 0; color: ${themeColor}; font-weight: bold;">${isDriver ? '🛺 FLEET DRIVER' : '👤 PASSENGER'}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 10px 0; color: #64748b;"><strong>Name:</strong></td>
-                        <td style="padding: 10px 0; color: #0f172a; font-weight: bold;">${name || 'Anonymous'}</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 10px 0; color: #64748b;"><strong>Phone Number:</strong></td>
-                        <td style="padding: 10px 0; color: ${themeColor}; font-weight: 800; font-size: 16px;">
-                            <a href="tel:${resolvedPhone}" style="color: ${themeColor}; text-decoration: underline;">${resolvedPhone}</a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 10px 0; color: #64748b;"><strong>Time (EAT):</strong></td>
-                        <td style="padding: 10px 0; color: #0f172a;">${fullDateTime}</td>
-                    </tr>
-                </table>
-
-                <div style="margin-top: 25px; text-align: center; background: #f8fafc; padding: 18px; border-radius: 12px; border: 1px dashed #cbd5e1;">
-                    <p style="margin: 0 0 12px 0; color: #475569; font-size: 13px; font-weight: 600;">
-                        ${isSuccess ? `This ${isDriver ? 'Driver' : 'Passenger'} is active.` : `⚠️ Account is stuck. Call them immediately to assist:`}
-                    </p>
-                    <a href="tel:${resolvedPhone}" style="background-color: ${isSuccess ? themeColor : '#D50000'}; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: inline-block;">
-                        📞 CALL ${isDriver ? 'DRIVER' : 'CUSTOMER'} (${resolvedPhone})
-                    </a>
-                </div>
-            </div>
-        </div>
-    `;
-
-    try {
-        await axios.post('https://api.brevo.com/v3/smtp/email', {
-            sender: { name: "Bayra Travel Security", email: "bayratraveldonotreplay@gmail.com" },
-            to: [{ email: email, name: name || "Passenger" }],
-            subject: isSuccess ? "🛡️ Welcome to Bayra Travel — Your Account Is Secure" : "⚠️ Urgent: Failed Password Attempt on Bayra Travel",
-            htmlContent: personalHtml
-        }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }).catch(() => {});
-
-        await new Promise(r => setTimeout(r, 300));
-
-        await axios.post('https://api.brevo.com/v3/smtp/email', {
-            sender: { name: "Bayra Control Tower", email: "bayratraveldonotreplay@gmail.com" },
-            to: [{ email: "bayratraveldonotreplay@gmail.com", name: "Executive Director" }],
-            subject: directorSubject,
-            htmlContent: directorHtml
-        }, { headers: { 'api-key': process.env.BREVO_API_KEY, 'Content-Type': 'application/json' } }).catch(() => {});
-    } catch (err) {}
-});
-
-const PORT = process.env.PORT || 3000;
+// =================================================================
+// 🚀 START SERVER
+// =================================================================
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => { console.log(`Bayra Imperial Core is ONLINE on port ${PORT}`); });
