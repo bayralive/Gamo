@@ -12,11 +12,11 @@ const SERVER_START_TIME = Date.now();
 // =================================================================
 
 // 👇 1. CASHIER BOT (For Deposits, Withdrawals, and Inline Buttons)
-const HARDCODED_CASHIER_TOKEN = 8906238578:AAFFDlT77X5Tj-NaL6fa1WizmpB0UPYZSvs";
+const HARDCODED_CASHIER_TOKEN = "8906238578:AAFFDlT77X5Tj-NaL6fa1WizmpB0UPYZSvs";
 const HARDCODED_CASHIER_CHAT_ID = "5232430147"; 
 
 // 👇 2. VERIFICATION BOT (For ID, License Photos, and Driver Reviews)
-const HARDCODED_VERIFY_TOKEN = 8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
+const HARDCODED_VERIFY_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
 const HARDCODED_VERIFY_CHAT_ID = "5232430147"; // Change if you want verifications sent to a different chat
 
 // Apply tokens safely
