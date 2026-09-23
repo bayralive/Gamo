@@ -15,7 +15,7 @@
     <application
         android:label="Bayra Driver"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Material3.DayNight">
         
         <service android:name=".ImmortalBeaconService" android:enabled="true" android:exported="false" android:foregroundServiceType="location" />

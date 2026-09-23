@@ -95,9 +95,6 @@ val GoldYellow = Color(0xFFFFB300)
 const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
 const val CHAT_ID = "5232430147"
 
-const val CASHIER_BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94" 
-const val CASHIER_CHAT_ID = "5232430147"
-
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
     private var triggerRecovery = mutableStateOf(false)
@@ -124,7 +121,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 🔥 STANDALONE HELPER FUNCTIONS
 fun launchNav(ctx: Context, lat: Double, lon: Double) { 
     try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$lat,$lon")).apply { setPackage("com.google.android.apps.maps") }) } 
     catch (e: Exception) { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lon"))) } 
@@ -375,11 +371,11 @@ fun DriverAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String) -
         } else authMode = "CHOICE"
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(PowderBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Image(painterResource(id = R.drawable.logo_driver), contentDescription = null, modifier = Modifier.size(130.dp))
         Spacer(modifier = Modifier.height(16.dp))
-        Text("BAYRA FLEET", fontSize = 26.sp, fontWeight = FontWeight.Black, color = ImperialDark)
-        Text("Imperial Driver Portal • Powder Blue Core", fontSize = 13.sp, color = Color.DarkGray)
+        Text("BAYRA FLEET", fontSize = 26.sp, fontWeight = FontWeight.Black, color = PowderBlueDark)
+        Text("Imperial Driver Portal", fontSize = 13.sp, color = Color.DarkGray)
         Spacer(modifier = Modifier.height(28.dp))
 
         when (authMode) {
@@ -730,12 +726,6 @@ fun CommissioningPortalScreen(driverName: String, driverStatus: String, rideCoun
                         Toast.makeText(ctx, "Documents securely uploaded to Firebase!", Toast.LENGTH_LONG).show()
                         onBack()
                     }
-                    
-                    try {
-                        val msg = "🚨 NEW DRIVER VERIFICATION UPLOAD\nDriver App Name: $driverName\nLegal Name: $fullName\nNational ID: $nationalId\nLicense: $licenseNumber\n\nPhotos have been attached directly into the Firebase Realtime Database. Please review and verify."
-                        val urlStr = "https://api.telegram.org/bot$CASHIER_BOT_TOKEN/sendMessage?chat_id=$CASHIER_CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}"
-                        URL(urlStr).readText()
-                    } catch (e: Exception) {}
                 }
             } else {
                 Toast.makeText(ctx, "Please complete all text fields and attach BOTH photos.", Toast.LENGTH_LONG).show()
@@ -818,7 +808,7 @@ fun RadarHubScreen(driverName: String, driverPhone: String, driverStatus: String
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
             if (!isRadarOn && activeSnap == null) {
-                Button(onClick = { isRadarOn = true; driverRef.updateChildren(mapOf("isOnline" to true)) }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(16.dp)) { Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) }
+                Button(onClick = { isRadarOn = true; driverRef.updateChildren(mapOf("isOnline" to true)) }, modifier = Modifier.fillMaxWidth().height(60.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(16.dp)) { Text("GO ONLINE", fontSize = 18.sp, fontWeight = FontWeight.Black) }
             } else {
                 Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp), color = PowderBlue) {
                     Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -896,6 +886,18 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
     val ctx = LocalContext.current
     var smsText by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
+    var isPendingReview by remember { mutableStateOf(false) }
+
+    LaunchedEffect(driverName) {
+        FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending")
+            .orderByChild("driverName").equalTo(driverName)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    isPendingReview = s.exists() && s.childrenCount > 0
+                }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -914,40 +916,51 @@ fun DebtLockoutScreen(driverName: String, debt: Int, credit: Int) {
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = PowderBlue), shape = RoundedCornerShape(12.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = PowderBlueDark, fontSize = 13.sp)
-                Text("Deposit to either account and paste confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color.White) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("1. Commercial Bank of Ethiopia (CBE)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = PowderBlueDark)
-                        Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
-                        Text("Account No: 1000379893698", fontSize = 15.sp, fontWeight = FontWeight.Black, color = PowderBlueDark)
-                    }
+        
+        if (isPendingReview) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)), shape = RoundedCornerShape(12.dp)) {
+                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⏳ DEPOSIT UNDER REVIEW", fontWeight = FontWeight.Black, color = Color(0xFFB45309))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Your SMS proof is currently being verified by the Cashier. Radar will unlock automatically once approved.", fontSize = 13.sp, color = Color(0xFF92400E), textAlign = TextAlign.Center)
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color.White) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("2. Telebirr Deposit", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0284C7))
-                        Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
-                        Text("Phone Number: 0928911665", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFF0284C7))
+            }
+        } else {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = PowderBlue), shape = RoundedCornerShape(12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("🏦 OFFICIAL DEPOSIT ACCOUNTS", fontWeight = FontWeight.Bold, color = PowderBlueDark, fontSize = 13.sp)
+                    Text("Deposit to either account and paste confirmation SMS:", fontSize = 11.sp, color = Color.DarkGray)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color.White) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("1. Commercial Bank of Ethiopia (CBE)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = PowderBlueDark)
+                            Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
+                            Text("Account No: 1000379893698", fontSize = 15.sp, fontWeight = FontWeight.Black, color = PowderBlueDark)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Color.White) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("2. Telebirr Deposit", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0284C7))
+                            Text("Account Name: Yeabkal Kassahun", fontSize = 12.sp)
+                            Text("Phone Number: 0928911665", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFF0284C7))
+                        }
                     }
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = smsText, onValueChange = { smsText = it }, label = { Text("Paste CBE or Telebirr SMS Proof here") }, modifier = Modifier.fillMaxWidth().height(100.dp), shape = RoundedCornerShape(12.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = {
-            if (smsText.length > 10) {
-                isSubmitting = true
-                FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending").push().setValue(mapOf("driverName" to driverName, "smsProof" to smsText, "amountDue" to (debt - credit), "submittedAt" to System.currentTimeMillis())).addOnCompleteListener {
-                    isSubmitting = false; Toast.makeText(ctx, "Deposit proof submitted! Reconciliation team notified via Telegram.", Toast.LENGTH_LONG).show(); smsText = ""
-                }
-            } else Toast.makeText(ctx, "Please paste the complete bank or Telebirr SMS.", Toast.LENGTH_SHORT).show()
-        }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
-            if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT DEPOSIT PROOF", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(value = smsText, onValueChange = { smsText = it }, label = { Text("Paste CBE or Telebirr SMS Proof here") }, modifier = Modifier.fillMaxWidth().height(100.dp), shape = RoundedCornerShape(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = {
+                if (smsText.length > 10) {
+                    isSubmitting = true
+                    FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending").push().setValue(mapOf("driverName" to driverName, "smsProof" to smsText, "amountDue" to (debt - credit), "submittedAt" to System.currentTimeMillis())).addOnCompleteListener {
+                        isSubmitting = false; Toast.makeText(ctx, "Deposit proof submitted! Reconciliation team notified via Telegram.", Toast.LENGTH_LONG).show(); smsText = ""
+                    }
+                } else Toast.makeText(ctx, "Please paste the complete bank or Telebirr SMS.", Toast.LENGTH_SHORT).show()
+            }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
+                if (isSubmitting) CircularProgressIndicator(color = Color.White) else Text("SUBMIT DEPOSIT PROOF", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -958,8 +971,12 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val balance = maxOf(0, credit - debt)
+    
     var showWithdrawModal by remember { mutableStateOf(false) }
+    var showDepositModal by remember { mutableStateOf(false) }
     var withdrawAmount by remember { mutableStateOf("") }
+    var depositSmsText by remember { mutableStateOf("") }
+    var isSubmittingDeposit by remember { mutableStateOf(false) }
     var selectedBank by remember { mutableStateOf("CBE") }
     var bankAccount by remember { mutableStateOf("") }
     var accountHolder by remember { mutableStateOf("") }
@@ -967,12 +984,37 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
     var challengeGenerated by remember { mutableStateOf<String?>(null) }
     var isSendingTelegramCode by remember { mutableStateOf(false) }
 
+    // 🔥 Real-time Pending State UI
+    var pendingWdrSum by remember { mutableStateOf(0) }
+    var hasPendingDeposit by remember { mutableStateOf(false) }
+
+    LaunchedEffect(driverName) {
+        FirebaseDatabase.getInstance(DB_URL).getReference("withdrawals").orderByChild("driverName").equalTo(driverName)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    var sum = 0
+                    s.children.forEach { if (it.child("status").value?.toString() == "PENDING") sum += it.child("amount").value?.toString()?.toIntOrNull() ?: 0 }
+                    pendingWdrSum = sum
+                }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+            
+        FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending").orderByChild("driverName").equalTo(driverName)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    hasPendingDeposit = s.exists() && s.childrenCount > 0
+                }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(20.dp).verticalScroll(rememberScrollState())) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = PowderBlueDark) }
             Text("IMPERIAL VAULT", fontSize = 24.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(start = 8.dp))
         }
         Spacer(modifier = Modifier.height(20.dp))
+        
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = PowderBlue), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(22.dp)) {
                 Text("Available Balance", color = Color.DarkGray, fontSize = 13.sp)
@@ -984,10 +1026,35 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
                 }
             }
         }
-        Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = { showWithdrawModal = true }, modifier = Modifier.fillMaxWidth().height(55.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
-            Icon(Icons.Filled.AccountBalanceWallet, null); Spacer(modifier = Modifier.width(8.dp)); Text("REQUEST WITHDRAWAL (MIN 200 ETB)", fontWeight = FontWeight.Bold)
+        
+        // ⏳ PENDING UI CARD
+        if (pendingWdrSum > 0 || hasPendingDeposit) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)), shape = RoundedCornerShape(12.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Pending Transactions", fontWeight = FontWeight.Bold, color = Color(0xFFB45309), fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (pendingWdrSum > 0) {
+                        Text("⏳ Withdrawal Request: $pendingWdrSum ETB", color = Color(0xFF92400E), fontSize = 13.sp)
+                    }
+                    if (hasPendingDeposit) {
+                        Text("⏳ Commission Deposit: Under Review", color = Color(0xFF92400E), fontSize = 13.sp)
+                    }
+                }
+            }
         }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        // 💰 ACTION BUTTONS
+        Button(onClick = { showWithdrawModal = true }, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), shape = RoundedCornerShape(12.dp)) {
+            Icon(Icons.Filled.AccountBalanceWallet, null); Spacer(modifier = Modifier.width(8.dp)); Text("REQUEST WITHDRAWAL (MIN 200)", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(onClick = { showDepositModal = true }, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), shape = RoundedCornerShape(12.dp)) {
+            Icon(Icons.Filled.Add, null); Spacer(modifier = Modifier.width(8.dp)); Text("DEPOSIT / SETTLE COMMISSION", fontWeight = FontWeight.Bold)
+        }
+
         Spacer(modifier = Modifier.height(20.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -999,6 +1066,51 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
         }
     }
 
+    // --- DEPOSIT MODAL ---
+    if (showDepositModal) {
+        AlertDialog(
+            onDismissRequest = { showDepositModal = false },
+            title = { Text("Deposit Commission Proof", fontWeight = FontWeight.Bold, color = PowderBlueDark) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Pay to CBE (1000379893698) or Telebirr (0928911665) and paste SMS proof below:", fontSize = 12.sp, color = Color.DarkGray)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = depositSmsText, 
+                        onValueChange = { depositSmsText = it }, 
+                        label = { Text("Paste Bank/Telebirr SMS") }, 
+                        modifier = Modifier.fillMaxWidth().height(120.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (depositSmsText.length > 10) {
+                        isSubmittingDeposit = true
+                        FirebaseDatabase.getInstance(DB_URL).getReference("deposits_pending").push().setValue(
+                            mapOf(
+                                "driverName" to driverName,
+                                "smsProof" to depositSmsText,
+                                "amountDue" to debt,
+                                "submittedAt" to System.currentTimeMillis()
+                            )
+                        ).addOnCompleteListener {
+                            isSubmittingDeposit = false
+                            showDepositModal = false
+                            depositSmsText = ""
+                            Toast.makeText(ctx, "Deposit proof submitted! Cashier notified.", Toast.LENGTH_LONG).show()
+                        }
+                    } else Toast.makeText(ctx, "Please paste valid SMS proof.", Toast.LENGTH_SHORT).show()
+                }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)) {
+                    if (isSubmittingDeposit) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    else Text("SUBMIT PROOF")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDepositModal = false }) { Text("Cancel") } }
+        )
+    }
+
+    // --- WITHDRAWAL MODAL ---
     if (showWithdrawModal) {
         AlertDialog(
             onDismissRequest = { showWithdrawModal = false },
@@ -1037,7 +1149,6 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
                             challengeGenerated = generatedPin
                             FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName/pendingChallenge").setValue(generatedPin)
 
-                            // 🔥 OFFICIAL TELEGRAM GATEWAY API DISPATCH
                             scope.launch(Dispatchers.IO) {
                                 try {
                                     val url = URL("https://bayra-backend-eu.onrender.com/send-telegram-code")
@@ -1049,20 +1160,27 @@ fun DriverWalletScreen(driverName: String, driverPhone: String, debt: Int, credi
                                     conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                                     conn.responseCode
                                 } catch (e: Exception) {}
-                                
-                                try {
-                                    val msg = "🔐 OFFICIAL TELEGRAM WITHDRAWAL CODE\nDriver: $driverName\nPhone: $driverPhone\nAmount: $amountNum ETB\nCode: $generatedPin"
-                                    URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}").readText()
-                                } catch (e: Exception) {}
                                 isSendingTelegramCode = false
                             }
-                            Toast.makeText(ctx, "Official verification code sent to your Telegram!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(ctx, "Official verification code sent via Telegram Gateway!", Toast.LENGTH_LONG).show()
                         } else Toast.makeText(ctx, "Min withdrawal is 200 ETB within available balance.", Toast.LENGTH_SHORT).show()
                     } else {
                         if (telegramCode == challengeGenerated || telegramCode == "123456") {
                             val reqId = "W_${System.currentTimeMillis()}"
-                            val reqData = mapOf("requestId" to reqId, "driverName" to driverName, "amount" to amountNum, "bank" to selectedBank, "account" to bankAccount, "accountHolder" to accountHolder, "status" to "PENDING", "requestedAt" to System.currentTimeMillis())
-                            FirebaseDatabase.getInstance(DB_URL).getReference("withdrawals/$reqId").setValue(reqData).addOnCompleteListener { showWithdrawModal = false; Toast.makeText(ctx, "Withdrawal Authorized! Cashier notified.", Toast.LENGTH_LONG).show() }
+                            val reqData = mapOf(
+                                "requestId" to reqId, 
+                                "driverName" to driverName, 
+                                "amount" to amountNum, 
+                                "bank" to selectedBank, 
+                                "account" to bankAccount, 
+                                "accountHolder" to accountHolder, 
+                                "status" to "PENDING", 
+                                "requestedAt" to System.currentTimeMillis()
+                            )
+                            FirebaseDatabase.getInstance(DB_URL).getReference("withdrawals/$reqId").setValue(reqData).addOnCompleteListener { 
+                                showWithdrawModal = false
+                                Toast.makeText(ctx, "Withdrawal Authorized! Status: PENDING review by Cashier.", Toast.LENGTH_LONG).show() 
+                            }
                         } else Toast.makeText(ctx, "Invalid Verification Code!", Toast.LENGTH_SHORT).show()
                     }
                 }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { 
