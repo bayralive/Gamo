@@ -16,7 +16,7 @@ const HARDCODED_CASHIER_TOKEN = "8906238578:AAFeosxWcaqh6Hd0HV8RT3Fe662QefMLO24"
 const HARDCODED_CASHIER_CHAT_ID = "5232430147"; 
 
 // 👇 2. VERIFICATION BOT (For ID, License Photos, and Driver Reviews)
-const HARDCODED_VERIFY_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94";
+const HARDCODED_VERIFY_TOKEN = "8830622576:AAFzK4Ra6ht004oo3-6qvC2gxPLjAhqEV9E";
 const HARDCODED_VERIFY_CHAT_ID = "5232430147"; // Change if you want verifications sent to a different chat
 
 // Apply tokens safely
