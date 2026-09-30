@@ -20,10 +20,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -66,8 +67,11 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -80,6 +84,10 @@ val ImperialDark = Color(0xFF0F172A)
 val ImperialRed = Color(0xFFD50000)
 val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
+
+// 🤖 BOT CREDENTIALS
+const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
+const val CHAT_ID = "5232430147"
 
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
@@ -122,6 +130,56 @@ fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status:
     }
 }
 
+// 🗺️ OSRM ROUTING API HELPER (Follows the road)
+fun getOsrmRoute(pLat: Double, pLon: Double, dLat: Double, dLon: Double, onResult: (List<GeoPoint>, Double) -> Unit) {
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val urlString = "https://router.project-osrm.org/route/v1/driving/$pLon,$pLat;$dLon,$dLat?overview=full&geometries=geojson"
+            val url = URL(urlString)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            val response = conn.inputStream.bufferedReader().readText()
+            val json = JSONObject(response)
+            val routes = json.getJSONArray("routes")
+            if (routes.length() > 0) {
+                val route = routes.getJSONObject(0)
+                val distanceMeters = route.getDouble("distance")
+                val geometry = route.getJSONObject("geometry")
+                val coords = geometry.getJSONArray("coordinates")
+                val points = mutableListOf<GeoPoint>()
+                for (i in 0 until coords.length()) {
+                    val pt = coords.getJSONArray(i)
+                    points.add(GeoPoint(pt.getDouble(1), pt.getDouble(0))) // GeoJSON is Lon, Lat
+                }
+                launch(Dispatchers.Main) { onResult(points, distanceMeters / 1000.0) }
+            }
+        } catch (e: Exception) {
+            // Fallback to straight line if OSRM fails
+            val dist = Location("").apply { latitude=pLat; longitude=pLon }.distanceTo(Location("").apply { latitude=dLat; longitude=dLon }) / 1000.0
+            launch(Dispatchers.Main) { onResult(listOf(GeoPoint(pLat, pLon), GeoPoint(dLat, dLon)), dist.toDouble()) }
+        }
+    }
+}
+
+// 📍 NOMINATIM SEARCH API HELPER
+fun searchLocation(query: String, onResult: (Double, Double) -> Unit) {
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val url = URL("https://nominatim.openstreetmap.org/search?q=${URLEncoder.encode(query, "UTF-8")}&format=json&limit=1")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.setRequestProperty("User-Agent", "BayraApp")
+            val response = conn.inputStream.bufferedReader().readText()
+            val jsonArray = org.json.JSONArray(response)
+            if (jsonArray.length() > 0) {
+                val obj = jsonArray.getJSONObject(0)
+                val lat = obj.getString("lat").toDouble()
+                val lon = obj.getString("lon").toDouble()
+                launch(Dispatchers.Main) { onResult(lat, lon) }
+            }
+        } catch (e: Exception) {}
+    }
+}
+
 @Composable
 fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     val ctx = LocalContext.current
@@ -140,9 +198,17 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     var currentTab by rememberSaveable { mutableStateOf("MAP") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
+    // Navigation Drawer State
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var showSupportModal by remember { mutableStateOf(false) }
+    var supportNoteText by remember { mutableStateOf("") }
+
     BackHandler {
         if (isRecoveringPassword) {
             isRecoveringPassword = false
+        } else if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
         } else if (isAuth) {
             if (currentTab != "MAP") {
                 currentTab = "MAP"
@@ -179,37 +245,131 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
             )
         }
     } else {
-        Scaffold(
-            bottomBar = {
-                NavigationBar(containerColor = PowderBlue) {
-                    NavigationBarItem(
-                        selected = (currentTab == "MAP"), 
-                        onClick = { currentTab = "MAP" }, 
-                        icon = { Icon(Icons.Filled.LocationOn, null, tint = if (currentTab == "MAP") PowderBlueDark else ImperialDark) }, 
-                        label = { Text("Ride", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(containerColor = PowderBlueLight) {
+                    Spacer(Modifier.height(32.dp))
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(64.dp), tint = PowderBlueDark)
+                        Spacer(Modifier.height(8.dp))
+                        Text(uName, fontSize = 22.sp, fontWeight = FontWeight.Black, color = ImperialDark)
+                        Text(uPhone, fontSize = 14.sp, color = Color.Gray)
+                    }
+                    Divider(color = PowderBlue)
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Map, null) },
+                        label = { Text("Ride Map", fontWeight = FontWeight.Bold) },
+                        selected = currentTab == "MAP",
+                        onClick = { currentTab = "MAP"; scope.launch { drawerState.close() } }
                     )
-                    NavigationBarItem(
-                        selected = (currentTab == "TRIPS"), 
-                        onClick = { currentTab = "TRIPS" }, 
-                        icon = { Icon(Icons.Filled.List, null, tint = if (currentTab == "TRIPS") PowderBlueDark else ImperialDark) }, 
-                        label = { Text("History", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Edit, null) },
+                        label = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
+                        selected = currentTab == "PROFILE",
+                        onClick = { currentTab = "PROFILE"; scope.launch { drawerState.close() } }
                     )
-                    NavigationBarItem(
-                        selected = (currentTab == "PROFILE"), 
-                        onClick = { currentTab = "PROFILE" }, 
-                        icon = { Icon(Icons.Filled.Person, null, tint = if (currentTab == "PROFILE") PowderBlueDark else ImperialDark) }, 
-                        label = { Text("Profile", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.List, null) },
+                        label = { Text("Trip History", fontWeight = FontWeight.Bold) },
+                        selected = currentTab == "TRIPS",
+                        onClick = { currentTab = "TRIPS"; scope.launch { drawerState.close() } }
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Settings, null) },
+                        label = { Text("Settings", fontWeight = FontWeight.Bold) },
+                        selected = false,
+                        onClick = { Toast.makeText(ctx, "Settings coming soon!", Toast.LENGTH_SHORT).show(); scope.launch { drawerState.close() } }
+                    )
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.SupportAgent, null) },
+                        label = { Text("Contact Support", fontWeight = FontWeight.Bold) },
+                        selected = false,
+                        onClick = { showSupportModal = true; scope.launch { drawerState.close() } }
                     )
                 }
             }
-        ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize().background(PowderBlueLight)) {
-                when (currentTab) {
-                    "MAP" -> CustomerMapScreen(uName, uPhone)
-                    "TRIPS" -> CustomerRideHistoryScreen(uPhone, onBack = { currentTab = "MAP" })
-                    "PROFILE" -> CustomerProfileScreen(uName, uPhone, onLogout = { isAuth = false; prefs.edit().clear().apply() })
+        ) {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar(containerColor = PowderBlue) {
+                        NavigationBarItem(
+                            selected = (currentTab == "MAP"), 
+                            onClick = { currentTab = "MAP" }, 
+                            icon = { Icon(Icons.Filled.LocationOn, null, tint = if (currentTab == "MAP") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Ride", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "TRIPS"), 
+                            onClick = { currentTab = "TRIPS" }, 
+                            icon = { Icon(Icons.Filled.List, null, tint = if (currentTab == "TRIPS") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("History", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        NavigationBarItem(
+                            selected = (currentTab == "PROFILE"), 
+                            onClick = { currentTab = "PROFILE" }, 
+                            icon = { Icon(Icons.Filled.Person, null, tint = if (currentTab == "PROFILE") PowderBlueDark else ImperialDark) }, 
+                            label = { Text("Profile", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
+                }
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding).fillMaxSize().background(PowderBlueLight)) {
+                    when (currentTab) {
+                        "MAP" -> CustomerMapScreen(
+                            uName = uName, 
+                            uPhone = uPhone, 
+                            onOpenDrawer = { scope.launch { drawerState.open() } }
+                        )
+                        "TRIPS" -> CustomerRideHistoryScreen(uPhone, onBack = { currentTab = "MAP" })
+                        "PROFILE" -> CustomerProfileScreen(
+                            initialName = uName, 
+                            initialPhone = uPhone, 
+                            onUpdate = { n, p -> uName = n; uPhone = p; prefs.edit().putString("n", n).putString("p", p).apply() },
+                            onLogout = { isAuth = false; prefs.edit().clear().apply() }
+                        )
+                    }
                 }
             }
+        }
+
+        // --- SUPPORT MODAL ---
+        if (showSupportModal) {
+            AlertDialog(
+                onDismissRequest = { showSupportModal = false },
+                title = { Text("Contact Support", fontWeight = FontWeight.Bold, color = PowderBlueDark) },
+                text = {
+                    Column {
+                        Text("Write your note or issue about a driver/ride below. It will be sent directly to our Verification & Support team.", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = supportNoteText,
+                            onValueChange = { supportNoteText = it },
+                            label = { Text("Your Note") },
+                            modifier = Modifier.fillMaxWidth().height(120.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (supportNoteText.isNotEmpty()) {
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val msg = "🚨 <b>PASSENGER SUPPORT NOTE</b>\n\n👤 <b>Passenger:</b> $uName\n📞 <b>Phone:</b> $uPhone\n\n📝 <b>Note:</b>\n<i>$supportNoteText</i>"
+                                    val urlStr = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}&parse_mode=HTML"
+                                    URL(urlStr).readText()
+                                } catch (e: Exception) {}
+                                launch(Dispatchers.Main) {
+                                    showSupportModal = false
+                                    supportNoteText = ""
+                                    Toast.makeText(ctx, "Note sent to support team!", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text("SEND NOTE") }
+                },
+                dismissButton = { TextButton(onClick = { showSupportModal = false }) { Text("Cancel") } }
+            )
         }
     }
 }
@@ -406,7 +566,7 @@ fun CustomerPasswordRecoveryView(onBack: () -> Unit) {
 }
 
 @Composable
-fun CustomerMapScreen(uName: String, uPhone: String) {
+fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     
@@ -422,6 +582,14 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
     var driverLon by remember { mutableStateOf(0.0) }
     
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+    var myLocationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
+    
+    // Polyline Route State
+    var routePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
+    var confirmedDistanceKm by remember { mutableStateOf(0.0) }
+    var liveOdoKm by remember { mutableStateOf(0.0) }
+    
+    var searchQuery by remember { mutableStateOf("") }
 
     // Listen for User's Active Ride
     LaunchedEffect(uPhone) {
@@ -455,6 +623,13 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                     override fun onDataChange(s: DataSnapshot) {
                         driverLat = s.child("lat").value?.toString()?.toDoubleOrNull() ?: 0.0
                         driverLon = s.child("lon").value?.toString()?.toDoubleOrNull() ?: 0.0
+                        
+                        // If ON_TRIP, calculate OSRM distance from Pickup to Driver
+                        if (activeRideSnap?.child("status")?.value?.toString() == "ON_TRIP" && pLat != 0.0 && driverLat != 0.0) {
+                            getOsrmRoute(pLat, pLon, driverLat, driverLon) { _, dist ->
+                                liveOdoKm = dist
+                            }
+                        }
                     }
                     override fun onCancelled(e: DatabaseError) {}
                 })
@@ -476,18 +651,25 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                 setMultiTouchControls(true)
                 controller.setZoom(16.5)
                 controller.setCenter(GeoPoint(6.0333, 37.5500))
+                
+                // Add GPS Location Overlay
+                val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(c), this)
+                locationOverlay.enableMyLocation()
+                overlays.add(locationOverlay)
+                myLocationOverlay = locationOverlay
+                
                 mapViewRef = this
             }
         }, update = { view ->
-            view.overlays.clear()
+            // Keep MyLocation overlay, remove others
+            view.overlays.retainAll { it is MyLocationNewOverlay }
             
-            // Draw Blue Polyline if both points exist
-            if (pLat != 0.0 && dLat != 0.0) {
+            // Draw Blue Polyline along actual road route
+            if (routePoints.isNotEmpty()) {
                 val line = Polyline().apply {
-                    addPoint(GeoPoint(pLat, pLon))
-                    addPoint(GeoPoint(dLat, dLon))
+                    setPoints(routePoints)
                     color = android.graphics.Color.parseColor("#0284C7") // PowderBlueDark
-                    width = 12f
+                    width = 14f
                 }
                 view.overlays.add(line)
             }
@@ -521,6 +703,48 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
 
+        // --- TOP SEARCH BAR & MENU ---
+        Row(modifier = Modifier.align(Alignment.TopCenter).padding(top = 30.dp, start = 16.dp, end = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = Color.White, modifier = Modifier.size(50.dp).shadow(4.dp, CircleShape).clickable { onOpenDrawer() }) {
+                Icon(Icons.Filled.Menu, null, modifier = Modifier.padding(12.dp), tint = PowderBlueDark)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search location...") },
+                trailingIcon = {
+                    IconButton(onClick = { 
+                        if (searchQuery.isNotEmpty()) {
+                            Toast.makeText(ctx, "Searching...", Toast.LENGTH_SHORT).show()
+                            searchLocation(searchQuery) { lat, lon ->
+                                mapViewRef?.controller?.animateTo(GeoPoint(lat, lon))
+                                mapViewRef?.controller?.setZoom(17.5)
+                            }
+                        }
+                    }) { Icon(Icons.Filled.Search, null, tint = PowderBlueDark) }
+                },
+                colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White, unfocusedBorderColor = Color.Transparent, focusedBorderColor = PowderBlueDark),
+                modifier = Modifier.weight(1f).height(55.dp).shadow(4.dp, RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        // --- GPS FAB ---
+        FloatingActionButton(
+            onClick = { 
+                myLocationOverlay?.myLocation?.let { loc ->
+                    mapViewRef?.controller?.animateTo(loc)
+                    mapViewRef?.controller?.setZoom(18.0)
+                } ?: Toast.makeText(ctx, "Waiting for GPS...", Toast.LENGTH_SHORT).show()
+            },
+            containerColor = Color.White,
+            contentColor = PowderBlueDark,
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 150.dp)
+        ) {
+            Icon(Icons.Filled.MyLocation, null)
+        }
+
         // CENTER RETICLE FOR SELECTING LOCATION
         if (activeRideSnap == null && step != "CONFIRM") {
             Icon(
@@ -535,7 +759,7 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
             if (activeRideSnap == null) {
                 // --- BOOKING FLOW ---
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(4.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(8.dp)) {
                     Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         when (step) {
                             "PICKUP" -> {
@@ -557,16 +781,22 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                     Button(onClick = { 
                                         dLat = mapViewRef?.mapCenter?.latitude ?: 0.0
                                         dLon = mapViewRef?.mapCenter?.longitude ?: 0.0
-                                        step = "CONFIRM"
+                                        
+                                        // Fetch actual road route from OSRM
+                                        getOsrmRoute(pLat, pLon, dLat, dLon) { points, distKm ->
+                                            routePoints = points
+                                            confirmedDistanceKm = distKm
+                                            step = "CONFIRM"
+                                        }
+                                        Toast.makeText(ctx, "Calculating route...", Toast.LENGTH_SHORT).show()
                                     }, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                                         Text("SET DROPOFF", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                             "CONFIRM" -> {
-                                val distKm = run { val l1=Location(""); l1.latitude=pLat; l1.longitude=pLon; val l2=Location(""); l2.latitude=dLat; l2.longitude=dLon; l1.distanceTo(l2)/1000.0 }
                                 val baseRate = when(selectedTier) { "Bajaj H" -> 20; "Code 3" -> 35; "Comfort" -> 45; else -> 30 }
-                                val price = maxOf(50, (distKm * baseRate).toInt())
+                                val price = maxOf(50, (confirmedDistanceKm * baseRate).toInt())
                                 
                                 Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     listOf("Pool", "Comfort", "Code 3", "Bajaj H").forEach { tier ->
@@ -581,8 +811,11 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("$price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialRed)
-                                    TextButton(onClick = { step = "PICKUP"; pLat=0.0; dLat=0.0 }) { Text("Reset Points", color = PowderBlueDark) }
+                                    Column {
+                                        Text("$price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialRed)
+                                        Text("Distance: ${String.format(Locale.US, "%.1f", confirmedDistanceKm)} km", fontSize = 12.sp, color = Color.Gray)
+                                    }
+                                    TextButton(onClick = { step = "PICKUP"; pLat=0.0; dLat=0.0; routePoints = emptyList() }) { Text("Reset Points", color = PowderBlueDark) }
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Button(onClick = {
@@ -606,20 +839,13 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                 val dName = snap.child("driverName").value?.toString() ?: "Unknown"
                 val dPhone = snap.child("dPhone").value?.toString() ?: ""
                 
-                // Odometer Calculation (Pickup to Driver Current Location)
-                val tripOdoKm = if (driverLat != 0.0 && driverLon != 0.0 && pLat != 0.0 && pLon != 0.0) {
-                    val l1 = Location("").apply { latitude = pLat; longitude = pLon }
-                    val l2 = Location("").apply { latitude = driverLat; longitude = driverLon }
-                    l1.distanceTo(l2) / 1000.0
-                } else 0.0
-
                 Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(8.dp)) {
                     Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         when(status) {
                             "REQUESTED" -> {
                                 Text("ፈለጋ ላይ ነን...", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = PowderBlueDark)
                                 Spacer(Modifier.height(16.dp))
-                                Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP" }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), modifier = Modifier.fillMaxWidth()) { Text("CANCEL RIDE", fontWeight = FontWeight.Bold) }
+                                Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP"; routePoints = emptyList() }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), modifier = Modifier.fillMaxWidth()) { Text("CANCEL RIDE", fontWeight = FontWeight.Bold) }
                             }
                             "ACCEPTED", "ARRIVED" -> {
                                 val title = if(status == "ACCEPTED") "አሽከርካሪ ተገኝቷል" else "Driver Arrived!"
@@ -628,7 +854,7 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                 Spacer(Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL") }
-                                    Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text("CANCEL", fontWeight = FontWeight.Bold) }
+                                    Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP"; routePoints = emptyList() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text("CANCEL", fontWeight = FontWeight.Bold) }
                                 }
                             }
                             "ON_TRIP" -> {
@@ -636,7 +862,7 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                 Text("Driver: $dName", fontSize = 16.sp, color = ImperialDark)
                                 Spacer(Modifier.height(12.dp))
                                 Surface(color = PowderBlueLight, shape = RoundedCornerShape(8.dp)) {
-                                    Text("Odometer: ${String.format(Locale.US, "%.2f", tripOdoKm)} KM", modifier = Modifier.padding(12.dp), color = PowderBlueDark, fontWeight = FontWeight.Bold)
+                                    Text("Odometer: ${String.format(Locale.US, "%.2f", liveOdoKm)} KM", modifier = Modifier.padding(12.dp), color = PowderBlueDark, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = ImperialDark), modifier = Modifier.fillMaxWidth().height(50.dp)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL DRIVER", fontWeight = FontWeight.Bold) }
@@ -649,7 +875,7 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                 Text("Amount Due: $price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
                                 Spacer(Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Button(onClick = { snap.ref.child("status").setValue("PAID_CASH") }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CASH", fontWeight = FontWeight.Bold) }
+                                    Button(onClick = { snap.ref.child("status").setValue("PAID_CASH"); step="PICKUP"; routePoints = emptyList() }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CASH", fontWeight = FontWeight.Bold) }
                                     Button(onClick = {
                                         scope.launch(Dispatchers.IO) {
                                             try {
@@ -663,6 +889,7 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
                                                 val response = conn.inputStream.bufferedReader().readText()
                                                 val checkoutUrl = JSONObject(response).getJSONObject("data").getString("checkout_url")
                                                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUrl)))
+                                                step="PICKUP"; routePoints = emptyList()
                                             } catch(e: Exception){}
                                         }
                                     }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CHAPA", fontWeight = FontWeight.Bold) }
@@ -681,19 +908,41 @@ fun CustomerMapScreen(uName: String, uPhone: String) {
 }
 
 @Composable
-fun CustomerProfileScreen(name: String, phone: String, onLogout: () -> Unit) {
+fun CustomerProfileScreen(initialName: String, initialPhone: String, onUpdate: (String, String) -> Unit, onLogout: () -> Unit) {
+    val ctx = LocalContext.current
+    var isEditing by remember { mutableStateOf(false) }
+    var editName by remember { mutableStateOf(initialName) }
+    var editPhone by remember { mutableStateOf(initialPhone) }
+
     Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(modifier = Modifier.height(30.dp))
         Icon(Icons.Filled.Person, null, modifier = Modifier.size(100.dp), tint = PowderBlueDark)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(name, fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
-        Text(phone, fontSize = 16.sp, color = Color.Gray)
+        
+        if (isEditing) {
+            OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Edit Name") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Edit Phone") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { 
+                isEditing = false
+                FirebaseDatabase.getInstance(DB_URL).getReference("users/$initialName").updateChildren(mapOf("phone" to editPhone))
+                onUpdate(editName, editPhone)
+                Toast.makeText(ctx, "Profile Updated", Toast.LENGTH_SHORT).show()
+            }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth()) { Text("SAVE CHANGES", fontWeight = FontWeight.Bold) }
+        } else {
+            Text(initialName, fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
+            Text(initialPhone, fontSize = 16.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { isEditing = true }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text("EDIT PROFILE") }
+        }
+        
         Spacer(modifier = Modifier.height(40.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Account Status", color = Color.Gray, fontSize = 14.sp)
-                    Text("Verified", fontWeight = FontWeight.Bold, color = EmeraldGreen, fontSize = 14.sp)
+                    Text("Verified Passenger", fontWeight = FontWeight.Bold, color = EmeraldGreen, fontSize = 14.sp)
                 }
             }
         }
