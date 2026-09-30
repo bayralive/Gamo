@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,7 +68,6 @@ import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
@@ -185,7 +185,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     NavigationBarItem(
                         selected = (currentTab == "MAP"), 
                         onClick = { currentTab = "MAP" }, 
-                        icon = { Icon(Icons.Filled.Map, null, tint = if (currentTab == "MAP") PowderBlueDark else ImperialDark) }, 
+                        icon = { Icon(Icons.Filled.LocationOn, null, tint = if (currentTab == "MAP") PowderBlueDark else ImperialDark) }, 
                         label = { Text("Ride", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     )
                     NavigationBarItem(
@@ -247,7 +247,7 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
     }
 
     Column(modifier = Modifier.fillMaxSize().background(PowderBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Filled.DirectionsCar, null, modifier = Modifier.size(100.dp), tint = PowderBlueDark)
+        Text("🚗", fontSize = 80.sp)
         Spacer(modifier = Modifier.height(16.dp))
         Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
         Text("Passenger App • Arba Minch", fontSize = 14.sp, color = Color.DarkGray)
