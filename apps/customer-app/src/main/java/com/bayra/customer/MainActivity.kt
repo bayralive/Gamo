@@ -282,7 +282,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                         onClick = { Toast.makeText(ctx, "Settings coming soon!", Toast.LENGTH_SHORT).show(); scope.launch { drawerState.close() } }
                     )
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.HeadsetMic, null) },
+                        icon = { Icon(Icons.Filled.Email, null) },
                         label = { Text("Contact Support", fontWeight = FontWeight.Bold) },
                         selected = false,
                         onClick = { showSupportModal = true; scope.launch { drawerState.close() } }
@@ -661,10 +661,10 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                 mapViewRef = this
             }
         }, update = { view ->
-            // Keep MyLocation overlay, remove others
-            val myLoc = view.overlays.find { it is MyLocationNewOverlay }
+            // Extract the location overlay so we don't clear it
+            val locOverlay = view.overlays.find { it is MyLocationNewOverlay }
             view.overlays.clear()
-            if (myLoc != null) view.overlays.add(myLoc)
+            if (locOverlay != null) { view.overlays.add(locOverlay) }
             
             // Draw Blue Polyline along actual road route
             if (routePoints.isNotEmpty()) {
@@ -735,10 +735,13 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
         // --- GPS FAB ---
         FloatingActionButton(
             onClick = { 
-                myLocationOverlay?.myLocation?.let { loc ->
+                val loc = myLocationOverlay?.myLocation
+                if (loc != null) {
                     mapViewRef?.controller?.animateTo(loc)
                     mapViewRef?.controller?.setZoom(18.0)
-                } ?: Toast.makeText(ctx, "Waiting for GPS...", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(ctx, "Waiting for GPS...", Toast.LENGTH_SHORT).show()
+                }
             },
             containerColor = Color.White,
             contentColor = PowderBlueDark,
