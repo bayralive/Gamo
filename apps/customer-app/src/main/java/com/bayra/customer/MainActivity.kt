@@ -248,7 +248,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet(containerColor = PowderBlueLight) {
+                ModalDrawerSheet(modifier = Modifier.background(PowderBlueLight)) {
                     Spacer(Modifier.height(32.dp))
                     Column(modifier = Modifier.padding(16.dp)) {
                         Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(64.dp), tint = PowderBlueDark)
@@ -258,7 +258,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                     }
                     Divider(color = PowderBlue)
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Map, null) },
+                        icon = { Icon(Icons.Filled.LocationOn, null) },
                         label = { Text("Ride Map", fontWeight = FontWeight.Bold) },
                         selected = currentTab == "MAP",
                         onClick = { currentTab = "MAP"; scope.launch { drawerState.close() } }
@@ -282,7 +282,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
                         onClick = { Toast.makeText(ctx, "Settings coming soon!", Toast.LENGTH_SHORT).show(); scope.launch { drawerState.close() } }
                     )
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.SupportAgent, null) },
+                        icon = { Icon(Icons.Filled.HeadsetMic, null) },
                         label = { Text("Contact Support", fontWeight = FontWeight.Bold) },
                         selected = false,
                         onClick = { showSupportModal = true; scope.launch { drawerState.close() } }
@@ -662,7 +662,9 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
             }
         }, update = { view ->
             // Keep MyLocation overlay, remove others
-            view.overlays.retainAll { it is MyLocationNewOverlay }
+            val myLoc = view.overlays.find { it is MyLocationNewOverlay }
+            view.overlays.clear()
+            if (myLoc != null) view.overlays.add(myLoc)
             
             // Draw Blue Polyline along actual road route
             if (routePoints.isNotEmpty()) {
