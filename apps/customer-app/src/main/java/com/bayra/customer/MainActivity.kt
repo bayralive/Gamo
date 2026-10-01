@@ -661,7 +661,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                 mapViewRef = this
             }
         }, update = { view ->
-            // Extract the location overlay so we don't clear it
+            // Keep MyLocation overlay, remove others
             val locOverlay = view.overlays.find { it is MyLocationNewOverlay }
             view.overlays.clear()
             if (locOverlay != null) { view.overlays.add(locOverlay) }
@@ -747,7 +747,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
             contentColor = PowderBlueDark,
             modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 150.dp)
         ) {
-            Icon(Icons.Filled.MyLocation, null)
+            Icon(Icons.Filled.Refresh, null)
         }
 
         // CENTER RETICLE FOR SELECTING LOCATION
