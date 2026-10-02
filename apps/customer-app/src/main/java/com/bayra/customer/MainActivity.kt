@@ -75,11 +75,13 @@ import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
-// 🎨 POWDER BLUE COLOR PALETTE
+// 🎨 POWDER BLUE COLOR PALETTE (Restored missing colors!)
 val PowderBlue = Color(0xFFB0E0E6)
 val PowderBlueLight = Color(0xFFE0F2FE)
 val PowderBlueDark = Color(0xFF0284C7)
+val ImperialDark = Color(0xFF0F172A)
 val ImperialRed = Color(0xFFD50000)
+val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
 val GoldYellow = Color(0xFFFFB300)
 
@@ -380,7 +382,7 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Bo
                         onClick = { showAboutModal = true; scope.launch { drawerState.close() } }
                     )
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.HeadsetMic, null) },
+                        icon = { Icon(Icons.Filled.Call, null) }, // Safe Icon instead of HeadsetMic
                         label = { Text("Contact Support (Telegram)", fontWeight = FontWeight.Bold) },
                         selected = false,
                         onClick = { 
@@ -521,18 +523,18 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
     Column(modifier = Modifier.fillMaxSize().background(PowderBlue).padding(28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text("🚗", fontSize = 80.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-        Text("Passenger App • Arba Minch", fontSize = 14.sp, color = Color.Gray)
+        Text("BAYRA TRAVEL", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
+        Text("Passenger App • Arba Minch", fontSize = 14.sp, color = Color.DarkGray)
         Spacer(modifier = Modifier.height(32.dp))
 
         when (authMode) {
             "CHOICE" -> {
-                Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    if (isGoogleConnecting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Email, null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                Button(onClick = { if (!isGoogleConnecting) { isGoogleConnecting = true; googleSignInLauncher.launch(googleSignInClient.signInIntent) } }, colors = ButtonDefaults.buttonColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
+                    if (isGoogleConnecting) CircularProgressIndicator(color = PowderBlueDark, modifier = Modifier.size(22.dp)) else { Icon(Icons.Filled.Email, null, tint = PowderBlueDark); Spacer(modifier = Modifier.width(12.dp)); Text("Continue with Google", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Filled.Person, null, tint = PowderBlueDark); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with Name & Password", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                Button(onClick = { authMode = "MANUAL" }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.fillMaxWidth().height(55.dp), shape = RoundedCornerShape(12.dp)) {
+                    Icon(Icons.Filled.Person, null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with Name & Password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
             "MANUAL" -> {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth())
@@ -571,7 +573,7 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("LOGIN / REGISTER", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.Gray) }
+                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.DarkGray) }
             }
             "GOOGLE_PHONE" -> {
                 val safeName = sanitizeKey(name)
@@ -970,7 +972,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                                     Text("Odometer: ${String.format(Locale.US, "%.2f", liveOdoKm)} KM", modifier = Modifier.padding(12.dp), color = PowderBlueDark, fontWeight = FontWeight.Bold)
                                 }
                                 Spacer(Modifier.height(16.dp))
-                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = ImperialDark), modifier = Modifier.fillMaxWidth().height(50.dp)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL DRIVER", fontWeight = FontWeight.Bold) }
+                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)), modifier = Modifier.fillMaxWidth().height(50.dp)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL DRIVER", fontWeight = FontWeight.Bold) }
                                 Spacer(Modifier.height(10.dp))
                                 Button(onClick = {}, enabled = false, colors = ButtonDefaults.buttonColors(disabledContainerColor = Color.LightGray, disabledContentColor = Color.DarkGray), modifier = Modifier.fillMaxWidth()) { Text("TRIP IN PROGRESS", fontWeight = FontWeight.Bold) }
                             }
@@ -994,6 +996,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                                                 val response = conn.inputStream.bufferedReader().readText()
                                                 val checkoutUrl = JSONObject(response).getJSONObject("data").getString("checkout_url")
                                                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUrl)))
+                                                step="PICKUP"; routePoints = emptyList()
                                             } catch(e: Exception){}
                                         }
                                     }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CHAPA", fontWeight = FontWeight.Bold) }
@@ -1138,7 +1141,7 @@ fun CustomerRideHistoryScreen(uPhone: String, onBack: () -> Unit) {
             override fun onCancelled(e: DatabaseError) {}
         })
     }
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(16.dp)) {
         Spacer(modifier = Modifier.height(10.dp))
         Text("MY TRIPS", fontSize = 24.sp, fontWeight = FontWeight.Black, color = PowderBlueDark, modifier = Modifier.padding(bottom = 16.dp))
         if (history.isEmpty()) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No completed rides found.", color = Color.Gray) }
