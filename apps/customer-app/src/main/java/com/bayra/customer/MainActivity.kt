@@ -37,16 +37,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -65,9 +63,6 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -75,7 +70,7 @@ import java.util.Locale
 
 const val DB_URL = "https://bayra-84ecf-default-rtdb.europe-west1.firebasedatabase.app"
 
-// 🎨 POWDER BLUE COLOR PALETTE (Restored missing colors!)
+// 🎨 POWDER BLUE COLOR PALETTE
 val PowderBlue = Color(0xFFB0E0E6)
 val PowderBlueLight = Color(0xFFE0F2FE)
 val PowderBlueDark = Color(0xFF0284C7)
@@ -83,11 +78,6 @@ val ImperialDark = Color(0xFF0F172A)
 val ImperialRed = Color(0xFFD50000)
 val ImperialWhite = Color(0xFFFFFFFF)
 val EmeraldGreen = Color(0xFF2E7D32)
-val GoldYellow = Color(0xFFFFB300)
-
-// 🤖 BOT CREDENTIALS
-const val BOT_TOKEN = "8594425943:AAH1M1_mYMI4pch-YfbC-hvzZfk_Kdrxb94"
-const val CHAT_ID = "5232430147"
 
 class MainActivity : ComponentActivity() {
     private val requestLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
@@ -99,29 +89,7 @@ class MainActivity : ComponentActivity() {
         requestLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
 
         triggerRecovery.value = checkRecoveryIntent(intent)
-        setContent { 
-            val prefs = remember { getSharedPreferences("bayra_customer_v231", Context.MODE_PRIVATE) }
-            var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("dark_mode", false)) }
-            
-            val colors = if (isDarkTheme) {
-                darkColorScheme(primary = PowderBlueDark, background = Color(0xFF121212), surface = Color(0xFF1E1E1E), onSurface = Color.White)
-            } else {
-                lightColorScheme(primary = PowderBlueDark, background = PowderBlueLight, surface = Color.White, onSurface = Color(0xFF0F172A))
-            }
-            
-            MaterialTheme(colorScheme = colors) { 
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    CustomerAppRoot(
-                        openRecoveryDirectly = triggerRecovery, 
-                        isDarkTheme = isDarkTheme,
-                        onThemeToggle = { 
-                            isDarkTheme = !isDarkTheme
-                            prefs.edit().putBoolean("dark_mode", isDarkTheme).apply() 
-                        }
-                    ) 
-                }
-            } 
-        }
+        setContent { MaterialTheme { CustomerAppRoot(openRecoveryDirectly = triggerRecovery) } }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -137,7 +105,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 🛡️ SANITIZE FIREBASE KEYS TO PREVENT LOGIN CRASHES
 fun sanitizeKey(key: String): String {
     return key.replace(Regex("[.#$\\[\\]]"), "").trim()
 }
@@ -157,98 +124,8 @@ fun sendSecurityEmailTrigger(email: String, name: String, phone: String, status:
     }
 }
 
-// 🗺️ OSRM ROUTING API HELPER (Follows the road)
-fun getOsrmRoute(pLat: Double, pLon: Double, dLat: Double, dLon: Double, onResult: (List<GeoPoint>, Double) -> Unit) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val urlString = "https://router.project-osrm.org/route/v1/driving/$pLon,$pLat;$dLon,$dLat?overview=full&geometries=geojson"
-            val url = URL(urlString)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "BayraPassengerApp/1.0") // REQUIRED TO PREVENT OSRM BLOCK
-            conn.connectTimeout = 5000
-            
-            val response = conn.inputStream.bufferedReader().readText()
-            val json = JSONObject(response)
-            val routes = json.getJSONArray("routes")
-            if (routes.length() > 0) {
-                val route = routes.getJSONObject(0)
-                val distanceMeters = route.getDouble("distance")
-                val geometry = route.getJSONObject("geometry")
-                val coords = geometry.getJSONArray("coordinates")
-                val points = mutableListOf<GeoPoint>()
-                for (i in 0 until coords.length()) {
-                    val pt = coords.getJSONArray(i)
-                    points.add(GeoPoint(pt.getDouble(1), pt.getDouble(0))) // GeoJSON is Lon, Lat
-                }
-                launch(Dispatchers.Main) { onResult(points, distanceMeters / 1000.0) }
-            }
-        } catch (e: Exception) {
-            // Fallback to straight line if OSRM fails
-            val dist = Location("").apply { latitude=pLat; longitude=pLon }.distanceTo(Location("").apply { latitude=dLat; longitude=dLon }) / 1000.0
-            launch(Dispatchers.Main) { onResult(listOf(GeoPoint(pLat, pLon), GeoPoint(dLat, dLon)), dist.toDouble()) }
-        }
-    }
-}
-
-// 📍 NOMINATIM SEARCH API HELPER
-fun searchLocation(query: String, onResult: (Double, Double) -> Unit) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val url = URL("https://nominatim.openstreetmap.org/search?q=${URLEncoder.encode(query, "UTF-8")}&format=json&limit=1")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", "BayraApp")
-            val response = conn.inputStream.bufferedReader().readText()
-            val jsonArray = org.json.JSONArray(response)
-            if (jsonArray.length() > 0) {
-                val obj = jsonArray.getJSONObject(0)
-                val lat = obj.getString("lat").toDouble()
-                val lon = obj.getString("lon").toDouble()
-                launch(Dispatchers.Main) { onResult(lat, lon) }
-            }
-        } catch (e: Exception) {}
-    }
-}
-
-fun getBase64Image(ctx: Context, uri: Uri): String? {
-    return try {
-        val inputStream = ctx.contentResolver.openInputStream(uri)
-        val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-        val maxDim = 600
-        val scale = java.lang.Math.min(maxDim.toFloat() / originalBitmap.width, maxDim.toFloat() / originalBitmap.height)
-        val scaledWidth = java.lang.Math.round(scale * originalBitmap.width)
-        val scaledHeight = java.lang.Math.round(scale * originalBitmap.height)
-        val scaledBitmap = android.graphics.Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
-        val outputStream = java.io.ByteArrayOutputStream()
-        scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, outputStream)
-        android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.DEFAULT)
-    } catch (e: Exception) { null }
-}
-
-fun decodeBase64ToBitmap(b64: String): android.graphics.Bitmap? {
-    return try {
-        val decodedString = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-        android.graphics.BitmapFactory.decodeByteArray(decodedString, 0, decodedString.size)
-    } catch (e: Exception) { null }
-}
-
-fun updateDriverRating(driverName: String, newRating: Int) {
-    val ref = FirebaseDatabase.getInstance(DB_URL).getReference("drivers/$driverName")
-    ref.addListenerForSingleValueEvent(object : ValueEventListener {
-        override fun onDataChange(s: DataSnapshot) {
-            if (s.exists()) {
-                val currentRating = s.child("rating").value?.toString()?.toDoubleOrNull() ?: 5.0
-                val count = s.child("reviewCount").value?.toString()?.toIntOrNull() ?: 0
-                val updatedRating = ((currentRating * count) + newRating) / (count + 1)
-                ref.updateChildren(mapOf("rating" to updatedRating, "reviewCount" to count + 1))
-            }
-        }
-        override fun onCancelled(e: DatabaseError) {}
-    })
-}
-
 @Composable
-fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Boolean, onThemeToggle: () -> Unit) {
+fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>) {
     val ctx = LocalContext.current
     val activity = ctx as? Activity
     val prefs = remember { ctx.getSharedPreferences("bayra_customer_v231", Context.MODE_PRIVATE) }
@@ -258,8 +135,6 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Bo
     var isAuth by remember { mutableStateOf(if (openRecoveryDirectly.value) false else prefs.getBoolean("auth", false)) }
     var isRecoveringPassword by rememberSaveable { mutableStateOf(openRecoveryDirectly.value) }
 
-    var profilePic by remember { mutableStateOf<String?>(null) }
-
     LaunchedEffect(openRecoveryDirectly.value) {
         if (openRecoveryDirectly.value) { isAuth = false; isRecoveringPassword = true; openRecoveryDirectly.value = false }
     }
@@ -267,18 +142,9 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Bo
     var currentTab by rememberSaveable { mutableStateOf("MAP") }
     var lastBackPressTime by remember { mutableStateOf(0L) }
 
-    // Navigation Drawer State
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    var showSupportModal by remember { mutableStateOf(false) }
-    var showAboutModal by remember { mutableStateOf(false) }
-    var supportNoteText by remember { mutableStateOf("") }
-
     BackHandler {
         if (isRecoveringPassword) {
             isRecoveringPassword = false
-        } else if (drawerState.isOpen) {
-            scope.launch { drawerState.close() }
         } else if (isAuth) {
             if (currentTab != "MAP") {
                 currentTab = "MAP"
@@ -299,12 +165,6 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Bo
             FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                 if (task.isSuccessful) FirebaseDatabase.getInstance(DB_URL).getReference("users/$uName/fcmToken").setValue(task.result)
             }
-            FirebaseDatabase.getInstance(DB_URL).getReference("users/$uName").addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(s: DataSnapshot) {
-                    profilePic = s.child("profilePhotoBase64").value?.toString() ?: s.child("photoUrl").value?.toString()
-                }
-                override fun onCancelled(e: DatabaseError) {}
-            })
         }
     }
 
@@ -321,169 +181,37 @@ fun CustomerAppRoot(openRecoveryDirectly: MutableState<Boolean>, isDarkTheme: Bo
             )
         }
     } else {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled = false, // 🔥 Fixes drawer popping out randomly during map scrolling
-            drawerContent = {
-                ModalDrawerSheet(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
-                    Spacer(Modifier.height(32.dp))
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        if (profilePic != null && profilePic!!.length > 200) {
-                            val bitmap = decodeBase64ToBitmap(profilePic!!)
-                            if (bitmap != null) {
-                                Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.size(64.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                            } else {
-                                Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(64.dp), tint = PowderBlueDark)
-                            }
-                        } else if (profilePic != null && profilePic!!.startsWith("http")) {
-                            AsyncImage(model = profilePic, contentDescription = null, modifier = Modifier.size(64.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                        } else {
-                            Icon(Icons.Filled.AccountCircle, null, modifier = Modifier.size(64.dp), tint = PowderBlueDark)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(uName, fontSize = 22.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-                        Text(uPhone, fontSize = 14.sp, color = Color.Gray)
-                    }
-                    Divider(color = PowderBlue)
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.LocationOn, null) },
-                        label = { Text("Ride Map", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "MAP",
-                        onClick = { currentTab = "MAP"; scope.launch { drawerState.close() } }
+        Scaffold(
+            bottomBar = {
+                NavigationBar(containerColor = PowderBlue) {
+                    NavigationBarItem(
+                        selected = (currentTab == "MAP"), 
+                        onClick = { currentTab = "MAP" }, 
+                        icon = { Icon(Icons.Filled.LocationOn, null, tint = if (currentTab == "MAP") PowderBlueDark else ImperialDark) }, 
+                        label = { Text("Ride", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Edit, null) },
-                        label = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "PROFILE",
-                        onClick = { currentTab = "PROFILE"; scope.launch { drawerState.close() } }
+                    NavigationBarItem(
+                        selected = (currentTab == "TRIPS"), 
+                        onClick = { currentTab = "TRIPS" }, 
+                        icon = { Icon(Icons.Filled.List, null, tint = if (currentTab == "TRIPS") PowderBlueDark else ImperialDark) }, 
+                        label = { Text("History", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.List, null) },
-                        label = { Text("Trip History", fontWeight = FontWeight.Bold) },
-                        selected = currentTab == "TRIPS",
-                        onClick = { currentTab = "TRIPS"; scope.launch { drawerState.close() } }
-                    )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Email, null) },
-                        label = { Text("Payment & Note Support", fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = { showSupportModal = true; scope.launch { drawerState.close() } }
-                    )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Settings, null) },
-                        label = { Text(if (isDarkTheme) "Switch to Light Mode" else "Switch to Dark Mode", fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = { onThemeToggle(); scope.launch { drawerState.close() } }
-                    )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Info, null) },
-                        label = { Text("About Us", fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = { showAboutModal = true; scope.launch { drawerState.close() } }
-                    )
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Filled.Call, null) }, // Safe Icon instead of HeadsetMic
-                        label = { Text("Contact Support (Telegram)", fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = { 
-                            scope.launch { drawerState.close() }
-                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/+r6wuw3kZGXkyZWNk"))) 
-                        }
+                    NavigationBarItem(
+                        selected = (currentTab == "PROFILE"), 
+                        onClick = { currentTab = "PROFILE" }, 
+                        icon = { Icon(Icons.Filled.Person, null, tint = if (currentTab == "PROFILE") PowderBlueDark else ImperialDark) }, 
+                        label = { Text("Profile", color = ImperialDark, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                     )
                 }
             }
-        ) {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar(containerColor = PowderBlue) {
-                        NavigationBarItem(
-                            selected = (currentTab == "MAP"), 
-                            onClick = { currentTab = "MAP" }, 
-                            icon = { Icon(Icons.Filled.LocationOn, null, tint = if (currentTab == "MAP") PowderBlueDark else Color.DarkGray) }, 
-                            label = { Text("Ride", color = Color.DarkGray, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        NavigationBarItem(
-                            selected = (currentTab == "TRIPS"), 
-                            onClick = { currentTab = "TRIPS" }, 
-                            icon = { Icon(Icons.Filled.List, null, tint = if (currentTab == "TRIPS") PowderBlueDark else Color.DarkGray) }, 
-                            label = { Text("History", color = Color.DarkGray, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        NavigationBarItem(
-                            selected = (currentTab == "PROFILE"), 
-                            onClick = { currentTab = "PROFILE" }, 
-                            icon = { Icon(Icons.Filled.Person, null, tint = if (currentTab == "PROFILE") PowderBlueDark else Color.DarkGray) }, 
-                            label = { Text("Profile", color = Color.DarkGray, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                    }
-                }
-            ) { padding ->
-                Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    when (currentTab) {
-                        "MAP" -> CustomerMapScreen(
-                            uName = uName, 
-                            uPhone = uPhone, 
-                            onOpenDrawer = { scope.launch { drawerState.open() } }
-                        )
-                        "TRIPS" -> CustomerRideHistoryScreen(uPhone, onBack = { currentTab = "MAP" })
-                        "PROFILE" -> CustomerProfileScreen(
-                            initialName = uName, 
-                            initialPhone = uPhone, 
-                            profilePicUrl = profilePic,
-                            onUpdate = { n, p -> uName = n; uPhone = p; prefs.edit().putString("n", n).putString("p", p).apply() },
-                            onLogout = { isAuth = false; prefs.edit().clear().apply() }
-                        )
-                    }
+        ) { padding ->
+            Box(modifier = Modifier.padding(padding).fillMaxSize().background(PowderBlueLight)) {
+                when (currentTab) {
+                    "MAP" -> CustomerMapScreen(uName, uPhone)
+                    "TRIPS" -> CustomerRideHistoryScreen(uPhone, onBack = { currentTab = "MAP" })
+                    "PROFILE" -> CustomerProfileScreen(uName, uPhone, onLogout = { isAuth = false; prefs.edit().clear().apply() })
                 }
             }
-        }
-
-        // --- PAYMENT / SUPPORT NOTE MODAL ---
-        if (showSupportModal) {
-            AlertDialog(
-                onDismissRequest = { showSupportModal = false },
-                title = { Text("Payment & Note Support", fontWeight = FontWeight.Bold, color = PowderBlueDark) },
-                text = {
-                    Column {
-                        Text("Send payment proofs or notes directly to the Verification Bot.", fontSize = 12.sp, color = Color.Gray)
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = supportNoteText,
-                            onValueChange = { supportNoteText = it },
-                            label = { Text("Your Note / Proof") },
-                            modifier = Modifier.fillMaxWidth().height(120.dp)
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        if (supportNoteText.isNotEmpty()) {
-                            scope.launch(Dispatchers.IO) {
-                                try {
-                                    val msg = "💳 <b>PAYMENT / SUPPORT NOTE</b>\n\n👤 <b>Passenger:</b> $uName\n📞 <b>Phone:</b> $uPhone\n\n📝 <b>Message:</b>\n<i>$supportNoteText</i>"
-                                    val urlStr = "https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$CHAT_ID&text=${URLEncoder.encode(msg, "UTF-8")}&parse_mode=HTML"
-                                    URL(urlStr).readText()
-                                } catch (e: Exception) {}
-                                launch(Dispatchers.Main) {
-                                    showSupportModal = false
-                                    supportNoteText = ""
-                                    Toast.makeText(ctx, "Message sent to verification team!", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text("SEND NOTE") }
-                },
-                dismissButton = { TextButton(onClick = { showSupportModal = false }) { Text("Cancel") } }
-            )
-        }
-
-        // --- ABOUT MODAL ---
-        if (showAboutModal) {
-            AlertDialog(
-                onDismissRequest = { showAboutModal = false },
-                title = { Text("About Bayra Travel", fontWeight = FontWeight.Bold, color = PowderBlueDark) },
-                text = { Text("Bayra Travel Passenger App\nVersion 2.31\n\nSouthern Ethiopia's Most Trusted Ride Platform. Built for Arba Minch with security and efficiency in mind.", color = MaterialTheme.colorScheme.onSurface) },
-                confirmButton = { Button(onClick = { showAboutModal = false }) { Text("OK") } }
-            )
         }
     }
 }
@@ -537,11 +265,11 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
                     Icon(Icons.Filled.Person, null, tint = Color.White); Spacer(modifier = Modifier.width(12.dp)); Text("Log in with Name & Password", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                 }
             "MANUAL" -> {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
                 TextButton(onClick = onForgotPassword, modifier = Modifier.align(Alignment.End)) { Text("Forgot Password? Reset via Telegram", color = PowderBlueDark, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
@@ -573,17 +301,17 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("LOGIN / REGISTER", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = Color.DarkGray) }
+                TextButton(onClick = { authMode = "CHOICE" }) { Text("Back to Sign In Options", color = ImperialDark) }
             }
             "GOOGLE_PHONE" -> {
                 val safeName = sanitizeKey(name)
                 if (googlePhotoUrl.isNotEmpty()) { AsyncImage(model = googlePhotoUrl, contentDescription = "Profile", modifier = Modifier.size(72.dp).clip(CircleShape), contentScale = ContentScale.Crop); Spacer(modifier = Modifier.height(8.dp)) }
                 Text("✓ Google Account Linked", color = EmeraldGreen, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("Welcome, $safeName", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
+                Text("Welcome, $safeName", color = ImperialDark, fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(20.dp))
-                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Create a Password") }, modifier = Modifier.fillMaxWidth(), visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = {
                     if (phone.length >= 9 && password.length >= 4) {
@@ -594,9 +322,9 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
                                 override fun onDataChange(s: DataSnapshot) {
                                     isLoading = false
                                     if (s.exists()) {
-                                        userRef.child("password").setValue(password); userRef.child("phone").setValue(phone); userRef.child("email").setValue(googleEmail); userRef.child("photoUrl").setValue(googlePhotoUrl)
+                                        userRef.child("password").setValue(password); userRef.child("phone").setValue(phone); userRef.child("email").setValue(googleEmail)
                                     } else {
-                                        val initialData = mapOf("name" to safeName, "phone" to phone, "email" to googleEmail, "photoUrl" to googlePhotoUrl, "password" to password)
+                                        val initialData = mapOf("name" to safeName, "phone" to phone, "email" to googleEmail, "password" to password)
                                         userRef.setValue(initialData)
                                     }
                                     sendSecurityEmailTrigger(googleEmail, safeName, phone, "SUCCESS")
@@ -613,7 +341,7 @@ fun CustomerAuthScreen(onForgotPassword: () -> Unit, onSuccess: (String, String)
                     if (isLoading) CircularProgressIndicator(color = ImperialWhite, modifier = Modifier.size(24.dp)) else Text("ENTER TRAVEL APP", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = { authMode = "CHOICE" }) { Text("Cancel", color = Color.Gray) }
+                TextButton(onClick = { authMode = "CHOICE" }) { Text("Cancel", color = ImperialDark) }
             }
         }
     }
@@ -636,7 +364,7 @@ fun CustomerPasswordRecoveryView(onBack: () -> Unit) {
         Text("Official Telegram Gateway Service", color = Color.Gray, fontSize = 13.sp, modifier = Modifier.padding(bottom = 28.dp))
 
         if (step == "PHONE") {
-            OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Registered Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Registered Phone Number") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
             Spacer(modifier = Modifier.height(20.dp))
             Button(onClick = {
                 if (phone.length >= 9) {
@@ -659,9 +387,9 @@ fun CustomerPasswordRecoveryView(onBack: () -> Unit) {
                 if (isLoading) CircularProgressIndicator(color = Color.White) else Text("SEND CODE VIA TELEGRAM", fontWeight = FontWeight.Bold)
             }
         } else {
-            OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Enter Telegram Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("Enter Telegram Code") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
             Spacer(modifier = Modifier.height(14.dp))
-            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Enter New Password") }, visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), trailingIcon = { TextButton(onClick = { passwordVisible = !passwordVisible }) { Text(if (passwordVisible) "HIDE" else "SHOW", color = PowderBlueDark, fontWeight = FontWeight.Bold) } }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White))
             Spacer(modifier = Modifier.height(22.dp))
             Button(onClick = {
                 if (code.length >= 4 && newPass.length >= 4) {
@@ -692,10 +420,8 @@ fun CustomerPasswordRecoveryView(onBack: () -> Unit) {
 }
 
 @Composable
-fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
+fun CustomerMapScreen(uName: String, uPhone: String) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    
     var step by remember { mutableStateOf("PICKUP") } // PICKUP, DROPOFF, CONFIRM
     var pLat by remember { mutableStateOf(0.0) }
     var pLon by remember { mutableStateOf(0.0) }
@@ -708,19 +434,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
     var driverLon by remember { mutableStateOf(0.0) }
     
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
-    var myLocationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
-    
-    // Polyline Route State
-    var routePoints by remember { mutableStateOf<List<GeoPoint>>(emptyList()) }
-    var confirmedDistanceKm by remember { mutableStateOf(0.0) }
-    var liveOdoKm by remember { mutableStateOf(0.0) }
-    
-    // Rating State
-    var rating by remember { mutableStateOf(0) }
-    
-    var searchQuery by remember { mutableStateOf("") }
 
-    // Listen for User's Active Ride
     LaunchedEffect(uPhone) {
         FirebaseDatabase.getInstance(DB_URL).getReference("rides").orderByChild("pPhone").equalTo(uPhone)
             .addValueEventListener(object : ValueEventListener {
@@ -750,11 +464,6 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                     override fun onDataChange(s: DataSnapshot) {
                         driverLat = s.child("lat").value?.toString()?.toDoubleOrNull() ?: 0.0
                         driverLon = s.child("lon").value?.toString()?.toDoubleOrNull() ?: 0.0
-                        if (activeRideSnap?.child("status")?.value?.toString() == "ON_TRIP" && pLat != 0.0 && driverLat != 0.0) {
-                            getOsrmRoute(pLat, pLon, driverLat, driverLon) { _, dist ->
-                                liveOdoKm = dist
-                            }
-                        }
                     }
                     override fun onCancelled(e: DatabaseError) {}
                 })
@@ -775,27 +484,11 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                 setMultiTouchControls(true)
                 controller.setZoom(16.5)
                 controller.setCenter(GeoPoint(6.0333, 37.5500))
-                
-                val locationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(c), this)
-                locationOverlay.enableMyLocation()
-                overlays.add(locationOverlay)
-                myLocationOverlay = locationOverlay
-                
                 mapViewRef = this
             }
         }, update = { view ->
-            val locOverlay = view.overlays.find { it is MyLocationNewOverlay }
             view.overlays.clear()
-            if (locOverlay != null) { view.overlays.add(locOverlay) }
             
-            if (routePoints.isNotEmpty()) {
-                val line = Polyline().apply {
-                    setPoints(routePoints)
-                    color = android.graphics.Color.parseColor("#0284C7") 
-                    width = 14f
-                }
-                view.overlays.add(line)
-            }
             if (pLat != 0.0) {
                 view.overlays.add(Marker(view).apply { 
                     position = GeoPoint(pLat, pLon); title = "Pickup"; setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) 
@@ -814,49 +507,6 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
             view.invalidate()
         }, modifier = Modifier.fillMaxSize())
 
-        Row(modifier = Modifier.align(Alignment.TopCenter).padding(top = 30.dp, start = 16.dp, end = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = Color.White, modifier = Modifier.size(50.dp).shadow(4.dp, CircleShape).clickable { onOpenDrawer() }) {
-                Icon(Icons.Filled.Menu, null, modifier = Modifier.padding(12.dp), tint = PowderBlueDark)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search location...") },
-                trailingIcon = {
-                    IconButton(onClick = { 
-                        if (searchQuery.isNotEmpty()) {
-                            Toast.makeText(ctx, "Searching...", Toast.LENGTH_SHORT).show()
-                            searchLocation(searchQuery) { lat, lon ->
-                                mapViewRef?.controller?.animateTo(GeoPoint(lat, lon))
-                                mapViewRef?.controller?.setZoom(17.5)
-                            }
-                        }
-                    }) { Icon(Icons.Filled.Search, null, tint = PowderBlueDark) }
-                },
-                colors = TextFieldDefaults.outlinedTextFieldColors(containerColor = Color.White, unfocusedBorderColor = Color.Transparent, focusedBorderColor = PowderBlueDark),
-                modifier = Modifier.weight(1f).height(55.dp).shadow(4.dp, RoundedCornerShape(24.dp)),
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-
-        FloatingActionButton(
-            onClick = { 
-                val loc = myLocationOverlay?.myLocation
-                if (loc != null) {
-                    mapViewRef?.controller?.animateTo(loc)
-                    mapViewRef?.controller?.setZoom(18.0)
-                } else {
-                    Toast.makeText(ctx, "Waiting for GPS...", Toast.LENGTH_SHORT).show()
-                }
-            },
-            containerColor = Color.White,
-            contentColor = PowderBlueDark,
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, bottom = 150.dp)
-        ) {
-            Icon(Icons.Filled.Refresh, null)
-        }
-
         if (activeRideSnap == null && step != "CONFIRM") {
             Icon(
                 Icons.Filled.LocationOn, 
@@ -868,7 +518,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
             if (activeRideSnap == null) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(8.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(8.dp)) {
                     Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                         when (step) {
                             "PICKUP" -> {
@@ -890,21 +540,16 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                                     Button(onClick = { 
                                         dLat = mapViewRef?.mapCenter?.latitude ?: 0.0
                                         dLon = mapViewRef?.mapCenter?.longitude ?: 0.0
-                                        
-                                        getOsrmRoute(pLat, pLon, dLat, dLon) { points, distKm ->
-                                            routePoints = points
-                                            confirmedDistanceKm = distKm
-                                            step = "CONFIRM"
-                                        }
-                                        Toast.makeText(ctx, "Calculating route...", Toast.LENGTH_SHORT).show()
+                                        step = "CONFIRM"
                                     }, modifier = Modifier.weight(1f).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) {
                                         Text("SET DROPOFF", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                             "CONFIRM" -> {
+                                val distKm = run { val l1=Location(""); l1.latitude=pLat; l1.longitude=pLon; val l2=Location(""); l2.latitude=dLat; l2.longitude=dLon; l1.distanceTo(l2)/1000.0 }
                                 val baseRate = when(selectedTier) { "Bajaj H" -> 20; "Code 3" -> 35; "Comfort" -> 45; else -> 30 }
-                                val price = maxOf(50, (confirmedDistanceKm * baseRate).toInt())
+                                val price = maxOf(50, (distKm * baseRate).toInt())
                                 
                                 Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     listOf("Pool", "Comfort", "Code 3", "Bajaj H").forEach { tier ->
@@ -919,11 +564,8 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column {
-                                        Text("$price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialRed)
-                                        Text("Distance: ${String.format(Locale.US, "%.1f", confirmedDistanceKm)} km", fontSize = 12.sp, color = Color.Gray)
-                                    }
-                                    TextButton(onClick = { step = "PICKUP"; pLat=0.0; dLat=0.0; routePoints = emptyList() }) { Text("Reset Points", color = PowderBlueDark) }
+                                    Text("$price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialRed)
+                                    TextButton(onClick = { step = "PICKUP"; pLat=0.0; dLat=0.0 }) { Text("Reset Points", color = PowderBlueDark) }
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Button(onClick = {
@@ -946,45 +588,41 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                 val dName = snap.child("driverName").value?.toString() ?: "Unknown"
                 val dPhone = snap.child("dPhone").value?.toString() ?: ""
                 
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(8.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(8.dp)) {
                     Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         when(status) {
                             "REQUESTED" -> {
                                 Text("ፈለጋ ላይ ነን...", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = PowderBlueDark)
                                 Spacer(Modifier.height(16.dp))
-                                Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP"; routePoints = emptyList() }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), modifier = Modifier.fillMaxWidth()) { Text("CANCEL RIDE", fontWeight = FontWeight.Bold) }
+                                Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP" }, colors = ButtonDefaults.buttonColors(containerColor = ImperialRed), modifier = Modifier.fillMaxWidth()) { Text("CANCEL RIDE", fontWeight = FontWeight.Bold) }
                             }
                             "ACCEPTED", "ARRIVED" -> {
                                 val title = if(status == "ACCEPTED") "አሽከርካሪ ተገኝቷል" else "Driver Arrived!"
                                 Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = PowderBlueDark)
-                                Text("Driver: $dName", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Text("Driver: $dName", fontSize = 16.sp, color = ImperialDark)
                                 Spacer(Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL") }
-                                    Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP"; routePoints = emptyList() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text("CANCEL", fontWeight = FontWeight.Bold) }
+                                    Button(onClick = { snap.ref.child("status").setValue("CANCELLED_BY_USER"); step="PICKUP" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = ImperialRed)) { Text("CANCEL", fontWeight = FontWeight.Bold) }
                                 }
                             }
                             "ON_TRIP" -> {
                                 Text("ጉዞ ላይ ነን", fontSize = 26.sp, fontWeight = FontWeight.Black, color = PowderBlueDark)
-                                Text("Driver: $dName", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Spacer(Modifier.height(12.dp))
-                                Surface(color = PowderBlueLight, shape = RoundedCornerShape(8.dp)) {
-                                    Text("Odometer: ${String.format(Locale.US, "%.2f", liveOdoKm)} KM", modifier = Modifier.padding(12.dp), color = PowderBlueDark, fontWeight = FontWeight.Bold)
-                                }
+                                Text("Driver: $dName", fontSize = 16.sp, color = ImperialDark)
                                 Spacer(Modifier.height(16.dp))
-                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)), modifier = Modifier.fillMaxWidth().height(50.dp)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL DRIVER", fontWeight = FontWeight.Bold) }
+                                Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dPhone"))) }, colors = ButtonDefaults.buttonColors(containerColor = ImperialDark), modifier = Modifier.fillMaxWidth().height(50.dp)) { Icon(Icons.Filled.Call, null); Spacer(Modifier.width(8.dp)); Text("ደውል / CALL DRIVER", fontWeight = FontWeight.Bold) }
                                 Spacer(Modifier.height(10.dp))
                                 Button(onClick = {}, enabled = false, colors = ButtonDefaults.buttonColors(disabledContainerColor = Color.LightGray, disabledContentColor = Color.DarkGray), modifier = Modifier.fillMaxWidth()) { Text("TRIP IN PROGRESS", fontWeight = FontWeight.Bold) }
                             }
                             "ARRIVED_DEST" -> {
                                 Text("You have arrived!", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
                                 val price = snap.child("price").value?.toString() ?: "0"
-                                Text("Amount Due: $price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
+                                Text("Amount Due: $price ETB", fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
                                 Spacer(Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Button(onClick = { snap.ref.child("status").setValue("PAID_CASH") }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CASH", fontWeight = FontWeight.Bold) }
                                     Button(onClick = {
-                                        scope.launch(Dispatchers.IO) {
+                                        CoroutineScope(Dispatchers.IO).launch {
                                             try {
                                                 val url = URL("https://bayra-backend-eu.onrender.com/initialize-payment")
                                                 val conn = url.openConnection() as HttpURLConnection
@@ -996,7 +634,6 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                                                 val response = conn.inputStream.bufferedReader().readText()
                                                 val checkoutUrl = JSONObject(response).getJSONObject("data").getString("checkout_url")
                                                 ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUrl)))
-                                                step="PICKUP"; routePoints = emptyList()
                                             } catch(e: Exception){}
                                         }
                                     }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.weight(1f).height(50.dp)) { Text("PAY CHAPA", fontWeight = FontWeight.Bold) }
@@ -1004,32 +641,7 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
                             }
                             "PAID_CASH", "PAID_CHAPA" -> {
                                 Text("Payment Confirmed", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                                Text("Rate your driver:", color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
-                                
-                                Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                                    for (i in 1..5) {
-                                        Icon(
-                                            Icons.Filled.Star, 
-                                            contentDescription = null, 
-                                            tint = if (i <= rating) GoldYellow else Color.LightGray,
-                                            modifier = Modifier.size(40.dp).clickable { rating = i }.padding(4.dp)
-                                        )
-                                    }
-                                }
-                                
-                                if (rating > 0) {
-                                    Button(onClick = {
-                                        updateDriverRating(dName, rating)
-                                        snap.ref.child("status").setValue("COMPLETED")
-                                        step = "PICKUP"
-                                        routePoints = emptyList()
-                                        rating = 0
-                                    }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark), modifier = Modifier.fillMaxWidth()) {
-                                        Text("SUBMIT RATING & FINISH", fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    Text("Waiting for driver completion...", color = Color.Gray, fontSize = 12.sp)
-                                }
+                                Text("Awaiting driver completion...", color = Color.Gray)
                             }
                         }
                     }
@@ -1040,80 +652,15 @@ fun CustomerMapScreen(uName: String, uPhone: String, onOpenDrawer: () -> Unit) {
 }
 
 @Composable
-fun CustomerProfileScreen(initialName: String, initialPhone: String, profilePicUrl: String?, onUpdate: (String, String) -> Unit, onLogout: () -> Unit) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var isEditing by remember { mutableStateOf(false) }
-    var editName by remember { mutableStateOf(initialName) }
-    var editPhone by remember { mutableStateOf(initialPhone) }
-    var localProfileUri by remember { mutableStateOf<Uri?>(null) }
-
-    val profileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        if (uri != null) {
-            localProfileUri = uri
-            Toast.makeText(ctx, "Saving profile picture...", Toast.LENGTH_SHORT).show()
-            scope.launch(Dispatchers.IO) {
-                val b64 = getBase64Image(ctx, uri)
-                if (b64 != null) {
-                    FirebaseDatabase.getInstance(DB_URL).getReference("users/$initialName/profilePhotoBase64").setValue(b64).addOnCompleteListener {
-                        Toast.makeText(ctx, "Profile picture saved!", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+fun CustomerProfileScreen(initialName: String, initialPhone: String, onLogout: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().background(PowderBlueLight).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(modifier = Modifier.height(30.dp))
-        
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Card(
-                modifier = Modifier.size(100.dp).clickable { profileLauncher.launch("image/*") },
-                shape = CircleShape,
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                if (localProfileUri != null) {
-                    AsyncImage(model = localProfileUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                } else if (profilePicUrl != null && profilePicUrl.length > 200) {
-                    val bitmap = decodeBase64ToBitmap(profilePicUrl)
-                    if (bitmap != null) {
-                        Image(bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    } else {
-                        Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(20.dp), tint = PowderBlueDark)
-                    }
-                } else if (profilePicUrl != null && profilePicUrl.startsWith("http")) {
-                    AsyncImage(model = profilePicUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                } else {
-                    Icon(Icons.Filled.Person, null, modifier = Modifier.fillMaxSize().padding(20.dp), tint = PowderBlueDark)
-                }
-            }
-            Box(modifier = Modifier.background(PowderBlueDark, CircleShape).padding(6.dp)) {
-                Icon(Icons.Filled.Edit, contentDescription = "Edit Profile Pic", modifier = Modifier.size(16.dp), tint = Color.White)
-            }
-        }
-
+        Icon(Icons.Filled.Person, null, modifier = Modifier.size(100.dp), tint = PowderBlueDark)
         Spacer(modifier = Modifier.height(16.dp))
-        
-        if (isEditing) {
-            OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Edit Name") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Edit Phone") }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { 
-                isEditing = false
-                FirebaseDatabase.getInstance(DB_URL).getReference("users/$initialName").updateChildren(mapOf("phone" to editPhone))
-                onUpdate(editName, editPhone)
-                Toast.makeText(ctx, "Profile Updated", Toast.LENGTH_SHORT).show()
-            }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen), modifier = Modifier.fillMaxWidth()) { Text("SAVE CHANGES", fontWeight = FontWeight.Bold) }
-        } else {
-            Text(initialName, fontSize = 28.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-            Text(initialPhone, fontSize = 16.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { isEditing = true }, colors = ButtonDefaults.buttonColors(containerColor = PowderBlueDark)) { Text("EDIT PROFILE DETAILS") }
-        }
-        
+        Text(initialName, fontSize = 28.sp, fontWeight = FontWeight.Black, color = ImperialDark)
+        Text(initialPhone, fontSize = 16.sp, color = Color.Gray)
         Spacer(modifier = Modifier.height(40.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(16.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Account Status", color = Color.Gray, fontSize = 14.sp)
@@ -1147,10 +694,10 @@ fun CustomerRideHistoryScreen(uPhone: String, onBack: () -> Unit) {
         if (history.isEmpty()) Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No completed rides found.", color = Color.Gray) }
         else LazyColumn {
             items(history) { snap ->
-                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(12.dp)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(12.dp)) {
                     Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column { 
-                            Text(snap.child("driverName").value?.toString() ?: "Driver", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text(snap.child("driverName").value?.toString() ?: "Driver", fontWeight = FontWeight.Bold, color = ImperialDark)
                             Text("${snap.child("tier").value} • Bayra Travel", fontSize = 12.sp, color = Color.Gray) 
                         }
                         Text("${snap.child("price").value} ETB", fontWeight = FontWeight.Black, color = PowderBlueDark, fontSize = 18.sp)
